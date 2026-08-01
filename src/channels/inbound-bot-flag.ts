@@ -19,7 +19,7 @@
  * (`@chat-adapter/telegram/dist/index.js:1528`, `isBot: user.is_bot`) and
  * `Message.toJSON()` preserves it verbatim (`chat/dist/index.js:333-346`),
  * which is what the bridge hands us as `InboundMessage.content`
- * (`chat-sdk-bridge.ts:163,211-218`). The upstream adapter's own comment
+ * (`chat-sdk-bridge.ts:164,213-220`). The upstream adapter's own comment
  * (`dist/index.js:551-553`) points callers needing bot detection at
  * `message.author.isBot`. So we read it there rather than rebuild v1's
  * plumbing: no `is_bot_message` column, no field of that name on any type.
