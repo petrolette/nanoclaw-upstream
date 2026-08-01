@@ -123,6 +123,42 @@ describe('multi-message chat batches', () => {
   });
 });
 
+describe('prompt-injection security note', () => {
+  // Carried over from v1 (src/router.ts): inbound chat is untrusted input and
+  // the model is told so explicitly. Structural confinement (mounts, guard
+  // seam, OneCLI gateway) covers the rest — this is the textual layer.
+  it('appends the security note when the batch contains chat messages', () => {
+    insertMessage('m1', 'chat', { sender: 'Alice', text: 'hello' });
+    const result = formatMessages(getPendingMessages());
+    expect(result).toContain('<security_note>');
+    expect(result).toContain('UNTRUSTED input');
+    expect(result).toContain('</security_note>');
+    // Must come after the message content, never before it.
+    expect(result.indexOf('<security_note>')).toBeGreaterThan(result.indexOf('hello'));
+  });
+
+  it('omits the security note on a batch with no conversation message', () => {
+    insertMessage('task-1', 'task', { prompt: 'Check the feeds' });
+    insertMessage('sys-1', 'system', { text: 'session resumed' });
+    const result = formatMessages(getPendingMessages());
+    expect(result).toContain('Check the feeds');
+    expect(result).not.toContain('<security_note>');
+  });
+
+  it('omits the security note on an empty batch', () => {
+    expect(formatMessages([])).not.toContain('<security_note>');
+  });
+
+  it('does not reintroduce a <messages> envelope alongside the note (#2555)', () => {
+    insertMessage('m1', 'chat', { sender: 'Alice', text: 'one' });
+    insertMessage('m2', 'chat', { sender: 'Bob', text: 'two' });
+    const result = formatMessages(getPendingMessages());
+    expect(result).toContain('<security_note>');
+    expect(result).not.toContain('<messages>');
+    expect(result).not.toContain('</messages>');
+  });
+});
+
 describe('timestamp formatting', () => {
   it('renders time via formatLocalTime (user TZ)', () => {
     // 2026-06-15T12:00:00Z — timezone-agnostic assertions (year is stable)
