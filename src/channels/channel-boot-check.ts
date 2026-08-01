@@ -44,12 +44,20 @@
  * It never throws and never fails the boot: it observes and reports. It also
  * says nothing about a channel that dies *after* boot — steady-state polling
  * supervision is deliberately out of scope here.
+ *
+ * ## Where the report goes
+ *
+ * `log.error` per missing channel, plus an email alert through
+ * `channel-boot-alert.ts` — deliberately not a chat message, since the channel
+ * that would carry it is the one being reported as down. The send is
+ * fire-and-forget: boot never waits on it.
  */
 import fs from 'fs';
 import path from 'path';
 
 import { readEnvFile } from '../env.js';
 import { log } from '../log.js';
+import { sendBootAlert } from './channel-boot-alert.js';
 import { getActiveAdapters, getRegisteredChannelNames } from './channel-registry.js';
 
 /** Minimal shape the report needs from a live adapter. */
@@ -162,6 +170,11 @@ export function assertChannelsStarted(): void {
       isConfigured: (channel) => CHANNEL_CONFIGURED_PREDICATES[channel]?.(),
     });
     reportChannelBoot(report);
+    // Fire-and-forget: `sendBootAlert` never rejects, and boot must not wait
+    // on a webhook. The extra `.catch` is belt-and-braces, not a live path.
+    void sendBootAlert(report.missing).catch((err: unknown) => {
+      log.error('Post-boot channel alert threw unexpectedly', { err });
+    });
   } catch (err) {
     log.error('Post-boot channel assertion failed to run', { err });
   }
