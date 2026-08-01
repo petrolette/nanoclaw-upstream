@@ -57,6 +57,7 @@ import {
   teardownChannelAdapters,
   createChannelDeliveryAdapter,
 } from './channels/channel-registry.js';
+import { assertChannelsStarted } from './channels/channel-boot-check.js';
 
 async function main(): Promise<void> {
   log.info('NanoClaw starting');
@@ -139,6 +140,13 @@ async function main(): Promise<void> {
       },
     };
   });
+
+  // 3b. Post-boot assertion — a configured channel that failed to start is
+  // otherwise invisible: initChannelAdapters only retries NetworkError, logs
+  // one line for anything else, and the process stays up with the channel
+  // silently absent. Observes and reports; never throws, never blocks boot.
+  // See channels/channel-boot-check.ts.
+  assertChannelsStarted();
 
   // 4. Delivery adapter bridge — dispatches to channel adapters by EXACT
   // registry key (instance ?? channelType): a named instance with an
