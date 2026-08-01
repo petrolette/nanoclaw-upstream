@@ -20,7 +20,7 @@ import { initDb, closeDb } from '../../src/db/connection.js';
 import { getAgentGroupByFolder } from '../../src/db/agent-groups.js';
 import { getMessagingGroupByPlatform } from '../../src/db/messaging-groups.js';
 import { runMigrations } from '../../src/db/migrations/index.js';
-import { insertTask } from '../../src/modules/scheduling/db.js';
+import { insertTaskRow } from '../../src/modules/scheduling/db.js';
 import { openInboundDb, resolveSession } from '../../src/session-manager.js';
 import { readEnvFile } from '../../src/env.js';
 import { buildDiscordResolver, type DiscordResolver } from './discord-resolver.js';
@@ -145,13 +145,16 @@ async function main(): Promise<void> {
           .get(t.id) as { id: string } | undefined;
         if (existing) { skipped++; continue; }
 
-        insertTask(inboxDb, {
+        // `seriesId` equals `id` for a brand-new series (see insertTaskRow's
+        // contract). Platform/channel/thread are deliberately not passed: on
+        // upstream/main a task fires into an isolated system session and those
+        // columns are always NULL. `platformId` is still needed above to find
+        // the messaging group, it just no longer travels with the row.
+        insertTaskRow(inboxDb, {
           id: t.id,
+          seriesId: t.id,
           processAfter: scheduling.processAfter,
           recurrence: scheduling.recurrence,
-          platformId,
-          channelType: parsed.channel_type,
-          threadId: null,
           content: JSON.stringify({
             prompt: t.prompt,
             script: t.script ?? null,
