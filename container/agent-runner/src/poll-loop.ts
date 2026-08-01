@@ -6,7 +6,7 @@ import {
   markScriptSkipped,
   type MessageInRow,
 } from './db/messages-in.js';
-import { writeMessageOut } from './db/messages-out.js';
+import { getMaxOutboundSeq, listChatSendsSince, writeMessageOut } from './db/messages-out.js';
 import { getInboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
 import {
   clearContinuation,
@@ -354,6 +354,14 @@ export async function processQuery(
   // Once-per-turn guard for the task-run "<message> block was not delivered"
   // nudge — mirrors unwrappedNudged for chat turns.
   let taskBlockNudged = false;
+  // Watermark for same-exchange duplicate suppression: outbound rows above it
+  // are deliveries this exchange already made. It tracks the same lifetime as
+  // the nudge guards above — reset when a NEW user batch arrives, never on a
+  // nudge retry, because a retry is part of the same exchange and is exactly
+  // where the second delivery appears. Scoping it to processQuery instead
+  // would freeze it for the container's lifetime: this query stays open and
+  // follow-up batches are pushed into it, never returning here.
+  let exchangeStartSeq = markExchangeStart();
   // Prompt queue for the exchange hook — each result event consumes the
   // oldest unanswered prompt, except a wrapping-retry result, which answers
   // the same prompt again. Unused (and unmaintained) when the provider
@@ -438,6 +446,7 @@ export async function processQuery(
         log(`Pushing ${keep.length} follow-up message(s) into active query`);
         unwrappedNudged = false;
         taskBlockNudged = false;
+        exchangeStartSeq = markExchangeStart();
         query.push(prompt);
         archivePrompts.push(prompt);
         markCompleted(keptIds);
@@ -502,7 +511,7 @@ export async function processQuery(
         // at all — either way the turn is finished.
         markCompleted(initialBatchIds);
         if (event.text) {
-          const { sent, hasUnwrapped, taskBlocks } = dispatchResultText(event.text, routing);
+          const { sent, hasUnwrapped, taskBlocks } = dispatchResultText(event.text, routing, exchangeStartSeq);
           const willRetryTaskBlocks = shouldNudgeTaskBlocks(routing.taskRun, taskBlocks, taskBlockNudged);
           // One-door task delivery: the final text becomes the run log entry
           // while explicit append-log calls remain optional additive notes.
@@ -641,8 +650,24 @@ export interface TaskMessageBlock {
 export function dispatchResultText(
   text: string,
   routing: RoutingContext,
+  exchangeStartSeq?: number,
 ): { sent: number; hasUnwrapped: boolean; taskBlocks: TaskMessageBlock[] } {
   const MESSAGE_RE = /<message\s+to="([^"]+)"\s*>([\s\S]*?)<\/message>/g;
+
+  // Deliveries already made in this exchange, keyed by destination + body. The
+  // agent routinely answers with send_message AND repeats the same text in a
+  // final <message> block; the addendum presents both as valid without making
+  // them exclusive, so the repeat has to be dropped here. Omitting the
+  // watermark (tests, direct callers) disables suppression entirely.
+  const deliveredKeys = new Set<string>();
+  let toolSent = 0;
+  if (exchangeStartSeq !== undefined) {
+    for (const row of listChatSendsSince(exchangeStartSeq)) {
+      toolSent++;
+      const key = deliveryKey(row.channel_type, row.platform_id, parseChatText(row.content));
+      if (key) deliveredKeys.add(key);
+    }
+  }
 
   let match: RegExpExecArray | null;
   let sent = 0;
@@ -678,7 +703,18 @@ export function dispatchResultText(
       scratchpadParts.push(`[dropped: unknown destination "${toName}"] ${body}`);
       continue;
     }
+    const destKey = deliveryKey(
+      dest.type === 'channel' ? dest.channelType! : 'agent',
+      dest.type === 'channel' ? dest.platformId! : dest.agentGroupId!,
+      body,
+    );
+    if (destKey && deliveredKeys.has(destKey)) {
+      log(`Duplicate suppressed: <message to="${toName}"> repeats a delivery already made this exchange`);
+      scratchpadParts.push(`[not delivered — duplicate of a message already sent this exchange; to="${toName}"] ${body}`);
+      continue;
+    }
     sendToDestination(dest, body, routing);
+    if (destKey) deliveredKeys.add(destKey);
     sent++;
   }
   if (lastIndex < text.length) {
@@ -693,7 +729,11 @@ export function dispatchResultText(
 
   // In a task run, plain final text is the NORMAL ending (it becomes the run
   // log) — never treat it as an undelivered reply or nudge the agent to wrap it.
-  const hasUnwrapped = !routing.taskRun && sent === 0 && !!scratchpad;
+  // `sent` only counts final-text blocks, so a turn answered entirely through
+  // the send_message tool used to look undelivered and got nudged — the nudge
+  // then produced the second delivery. A tool send this exchange means the user
+  // already has the answer; there is nothing to re-send.
+  const hasUnwrapped = !routing.taskRun && sent === 0 && !!scratchpad && toolSent === 0;
   if (hasUnwrapped) {
     log(`WARNING: agent output had no <message to="..."> blocks — nothing was sent`);
   }
@@ -756,6 +796,49 @@ export function autoAppendTaskLog(text: string): void {
     content: JSON.stringify({ text: line }),
   });
   log('Task run log auto-appended from final text');
+}
+
+/**
+ * Watermark for a new exchange, or undefined when it cannot be read.
+ *
+ * Never let this throw into the caller: the follow-up poll reads it on the path
+ * that pushes the user's message into the open query, and duplicate
+ * suppression is an amenity — losing it costs a repeated message, whereas
+ * losing the push costs the message itself. Undefined disables suppression for
+ * that exchange, which is exactly the behaviour that shipped before.
+ */
+function markExchangeStart(): number | undefined {
+  try {
+    return getMaxOutboundSeq();
+  } catch (err) {
+    log(`Could not mark exchange start: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+}
+
+/**
+ * The delivered text of a chat row, or null when the row is not a plain text
+ * send. File sends carry attachments a text block cannot duplicate, and an
+ * empty body is too weak an identity to suppress on.
+ */
+function parseChatText(content: string): string | null {
+  try {
+    const parsed = JSON.parse(content) as { text?: unknown; files?: unknown };
+    if (parsed.files !== undefined && parsed.files !== null) return null;
+    return typeof parsed.text === 'string' ? parsed.text.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Identity of a delivery: same destination + same body. Null disables matching.
+ * Joined on NUL so no separator can occur inside a field and collapse two
+ * distinct destinations onto one key.
+ */
+function deliveryKey(channelType: string | null, platformId: string | null, body: string | null): string | null {
+  if (!channelType || !platformId || !body) return null;
+  return [channelType, platformId, body].join('\u0000');
 }
 
 function sendToDestination(dest: DestinationEntry, body: string, routing: RoutingContext): void {

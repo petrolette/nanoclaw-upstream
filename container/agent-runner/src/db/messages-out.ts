@@ -77,6 +77,43 @@ export function writeMessageOut(msg: WriteMessageOut): number {
   return nextSeq;
 }
 
+export interface ChatSendRow {
+  channel_type: string | null;
+  platform_id: string | null;
+  content: string;
+}
+
+/**
+ * The highest seq in messages_out, or 0 when empty. Callers mark the start of
+ * an exchange with this so a later read can tell which rows that exchange
+ * produced.
+ */
+export function getMaxOutboundSeq(): number {
+  const row = getOutboundDb().prepare('SELECT COALESCE(MAX(seq), 0) AS m FROM messages_out').get() as {
+    m: number;
+  };
+  return row.m;
+}
+
+/**
+ * Immediate chat rows written after `afterSeq` — the deliveries an exchange has
+ * already made, whichever writer made them.
+ *
+ * outbound.db is deliberately the lookup surface: the MCP server runs as a
+ * separate stdio subprocess from the poll loop (see db/session-state.ts), so a
+ * `send_message` delivery leaves no trace in poll-loop module state. Scheduled
+ * rows (`deliver_after`) are excluded — they have not been delivered yet, so
+ * they cannot be something a final-text block duplicates.
+ */
+export function listChatSendsSince(afterSeq: number): ChatSendRow[] {
+  return getOutboundDb()
+    .prepare(
+      `SELECT channel_type, platform_id, content FROM messages_out
+        WHERE seq > ? AND kind = 'chat' AND deliver_after IS NULL`,
+    )
+    .all(afterSeq) as ChatSendRow[];
+}
+
 /**
  * Look up a message's platform ID by seq number.
  * Searches both inbound and outbound DBs since seq spans both.
