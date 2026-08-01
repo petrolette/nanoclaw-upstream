@@ -397,6 +397,114 @@ export function computeWhatsappDefaults(shared: boolean): ChannelDefaults {
       };
 }
 
+// --- Reconnect backoff ------------------------------------------------------
+//
+// DIVERGENCE FROM `upstream/channels` — deliberate, re-apply after every copy
+// of this file from upstream.
+//
+// Upstream retries a failed reconnect exactly ONCE (RECONNECT_DELAY_MS later)
+// and then gives up for good: the second failure only logs 'Reconnection retry
+// failed' and nothing is ever scheduled again. Since connectSocket() rejects
+// whenever resolveWaWebVersion() can't reach the network, any outage longer
+// than a few seconds leaves WhatsApp dead until the host process restarts.
+//
+// This restores the v1 behaviour: attempts space out along a backoff table,
+// cap at 5 minutes, and NEVER stop while the reconnect is legitimate. The
+// first two steps (0ms then RECONNECT_DELAY_MS) reproduce upstream's timing
+// exactly, so nothing changes for a single blip — only the dead end is gone.
+//
+// Kept as plain module-level functions over an explicit state object (no
+// class, no restructuring of the adapter factory) so the diff against
+// upstream stays a handful of lines, and so the backoff is unit-testable
+// without standing up a real Baileys socket.
+
+const RECONNECT_BACKOFF_MS = [
+  0, // first attempt is immediate, as upstream
+  RECONNECT_DELAY_MS,
+  10_000,
+  20_000,
+  40_000,
+  80_000,
+  160_000,
+];
+const RECONNECT_BACKOFF_CAP_MS = 300_000; // 5 minutes
+
+export interface ReconnectState {
+  /** Failed reconnect attempts since the last successful connection. */
+  attempt: number;
+  /** Pending backoff timer, if any. */
+  timer?: ReturnType<typeof setTimeout>;
+}
+
+export interface ReconnectDeps {
+  /** Opens a fresh socket. Rejecting means "attempt failed, try again". */
+  connect: () => Promise<void>;
+  /** Read live — teardown can flip it while a timer is pending. */
+  isShuttingDown: () => boolean;
+}
+
+export function createReconnectState(): ReconnectState {
+  return { attempt: 0 };
+}
+
+/** Delay for a 0-based attempt index: table step, capped at 5 minutes. */
+export function reconnectDelayMs(attempt: number): number {
+  return Math.min(RECONNECT_BACKOFF_MS[attempt] ?? RECONNECT_BACKOFF_CAP_MS, RECONNECT_BACKOFF_CAP_MS);
+}
+
+/**
+ * Reconnect decision on a closed connection. Both conditions are load-bearing
+ * and unchanged from upstream: a parallel connectSocket() during shutdown can
+ * truncate creds.json and force a full re-pair, and a loggedOut close has its
+ * own auth-clearing branch.
+ */
+export function shouldReconnectAfterClose(reason: number | undefined, shuttingDown: boolean): boolean {
+  return !shuttingDown && reason !== DisconnectReason.loggedOut;
+}
+
+/** Drop a pending backoff timer (shutdown, or the connection came back up). */
+export function cancelReconnect(state: ReconnectState): void {
+  if (state.timer !== undefined) {
+    clearTimeout(state.timer);
+    state.timer = undefined;
+  }
+}
+
+/**
+ * Reset after a successful connection — without this, the first micro-outage
+ * following a long failure streak would already wait the 5-minute cap.
+ */
+export function resetReconnect(state: ReconnectState): void {
+  cancelReconnect(state);
+  state.attempt = 0;
+}
+
+/**
+ * Schedule the next reconnect attempt, re-scheduling itself on failure — the
+ * "never a dead end" property. Callers must already have decided the reconnect
+ * is legitimate (see shouldReconnectAfterClose).
+ */
+export function scheduleReconnect(state: ReconnectState, deps: ReconnectDeps): void {
+  if (deps.isShuttingDown()) return;
+  cancelReconnect(state);
+  const attempt = state.attempt;
+  state.attempt += 1;
+  const delayMs = reconnectDelayMs(attempt);
+  log.info('Scheduling WhatsApp reconnect', { attempt: attempt + 1, delayMs });
+  state.timer = setTimeout(() => {
+    state.timer = undefined;
+    // Teardown may have started while this timer was pending.
+    if (deps.isShuttingDown()) {
+      log.info('Skipping WhatsApp reconnect — shutting down');
+      return;
+    }
+    deps.connect().catch((err) => {
+      log.error('WhatsApp reconnect attempt failed', { attempt: attempt + 1, err });
+      scheduleReconnect(state, deps);
+    });
+  }, delayMs);
+}
+
 // Adapter-internal env: same .env keys as always (setup/channels/whatsapp.ts
 // still writes them), but read here instead of imported from core config —
 // shared-number handling is channel-local.
@@ -422,6 +530,13 @@ registerChannelAdapter('whatsapp', {
     let connected = false;
     let shuttingDown = false;
     let setupConfig: ChannelSetup;
+
+    // Reconnect backoff state (see the block above registerChannelAdapter).
+    const reconnectState = createReconnectState();
+    const reconnectDeps: ReconnectDeps = {
+      connect: () => connectSocket(),
+      isShuttingDown: () => shuttingDown,
+    };
 
     // LID → phone JID mapping (WhatsApp's new ID system)
     const lidToPhoneMap: Record<string, string> = {};
@@ -721,20 +836,14 @@ registerChannelAdapter('whatsapp', {
           // initializes useMultiFileAuthState which can truncate creds.json
           // mid-write when the process exits, leaving a 0-byte creds file
           // and forcing a fresh QR pairing on next start.
-          const shouldReconnect = !shuttingDown && reason !== DisconnectReason.loggedOut;
+          const shouldReconnect = shouldReconnectAfterClose(reason, shuttingDown);
 
           log.info('WhatsApp connection closed', { reason, shouldReconnect, shuttingDown });
 
           if (shouldReconnect) {
-            log.info('Reconnecting...');
-            connectSocket().catch((err) => {
-              log.error('Failed to reconnect, retrying in 5s', { err });
-              setTimeout(() => {
-                connectSocket().catch((err2) => {
-                  log.error('Reconnection retry failed', { err: err2 });
-                });
-              }, RECONNECT_DELAY_MS);
-            });
+            // Backoff instead of upstream's single retry — see the divergence
+            // note above registerChannelAdapter.
+            scheduleReconnect(reconnectState, reconnectDeps);
           } else if (reason === DisconnectReason.loggedOut) {
             // Server-side logout (account unlinked, 401, etc.). Clear auth so
             // the next start prompts for a fresh pair — stale creds would
@@ -768,6 +877,7 @@ registerChannelAdapter('whatsapp', {
           }
         } else if (connection === 'open') {
           connected = true;
+          resetReconnect(reconnectState);
           log.info('Connected to WhatsApp');
 
           // Clean up pairing code file after successful connection
@@ -1083,6 +1193,9 @@ registerChannelAdapter('whatsapp', {
 
       async teardown() {
         shuttingDown = true;
+        // Drop a pending backoff timer so it can't fire a connectSocket()
+        // after shutdown started (the timer callback also re-checks).
+        cancelReconnect(reconnectState);
         connected = false;
         sock?.end(undefined);
         log.info('WhatsApp adapter shut down');
