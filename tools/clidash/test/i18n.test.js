@@ -3,13 +3,28 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { DICT, LOCALES, DEFAULT_LOCALE, t, getLocale, setLocale, localeTag, resolveLabel } from '../public/i18n.js';
+import { DICT, LOCALES, DEFAULT_LOCALE, FALLBACK_LOCALE, t, getLocale, setLocale, localeTag, resolveLabel } from '../public/i18n.js';
 
 const appSrc = readFileSync(fileURLToPath(new URL('../public/app.js', import.meta.url)), 'utf8');
 const htmlSrc = readFileSync(fileURLToPath(new URL('../public/index.html', import.meta.url)), 'utf8');
 
+// Captured at import time, before any test switches locale. Node has no
+// localStorage, so this is exactly what a first-time visitor resolves to.
+const initialLocale = getLocale();
+
+test('a visitor with no stored pick lands in French', () => {
+  assert.equal(DEFAULT_LOCALE, 'fr');
+  assert.equal(initialLocale, 'fr');
+});
+
+// Regression: the browser language must NOT override the French default.
+test('locale detection never consults navigator.language', () => {
+  const i18nSrc = readFileSync(fileURLToPath(new URL('../public/i18n.js', import.meta.url)), 'utf8');
+  assert.doesNotMatch(i18nSrc, /navigator/);
+});
+
 test('every locale carries exactly the same keys', () => {
-  const reference = Object.keys(DICT[DEFAULT_LOCALE]).sort();
+  const reference = Object.keys(DICT[FALLBACK_LOCALE]).sort();
   for (const loc of LOCALES) {
     assert.deepEqual(Object.keys(DICT[loc]).sort(), reference, `locale "${loc}" key set drifted`);
   }
@@ -18,15 +33,15 @@ test('every locale carries exactly the same keys', () => {
 // A key that is a function in one locale and a plain string in another throws at
 // call time (`t('x', 1)` silently drops the argument) — catch it here instead.
 test('a key has the same shape (string vs function) in every locale', () => {
-  for (const key of Object.keys(DICT[DEFAULT_LOCALE])) {
+  for (const key of Object.keys(DICT[FALLBACK_LOCALE])) {
     const shapes = new Set(LOCALES.map((loc) => typeof DICT[loc][key]));
     assert.equal(shapes.size, 1, `key "${key}" mixes shapes: ${[...shapes].join(', ')}`);
   }
 });
 
 test('function entries take the same argument count in every locale', () => {
-  for (const key of Object.keys(DICT[DEFAULT_LOCALE])) {
-    if (typeof DICT[DEFAULT_LOCALE][key] !== 'function') continue;
+  for (const key of Object.keys(DICT[FALLBACK_LOCALE])) {
+    if (typeof DICT[FALLBACK_LOCALE][key] !== 'function') continue;
     const arities = new Set(LOCALES.map((loc) => DICT[loc][key].length));
     assert.equal(arities.size, 1, `key "${key}" takes different argument counts per locale`);
   }
@@ -38,7 +53,7 @@ test('every t() key used by app.js exists in the dictionary', () => {
   const used = [...appSrc.matchAll(/\bt\('([^']+)'/g)].map((m) => m[1]);
   assert.ok(used.length > 30, `expected app.js to be translated, found ${used.length} t() calls`);
   for (const key of new Set(used)) {
-    assert.ok(key in DICT[DEFAULT_LOCALE], `app.js uses unknown key "${key}"`);
+    assert.ok(key in DICT[FALLBACK_LOCALE], `app.js uses unknown key "${key}"`);
   }
 });
 
@@ -120,7 +135,9 @@ test('shipped configs use valid label shapes', () => {
     for (const label of labels) {
       if (typeof label === 'string') continue;
       assert.equal(typeof label, 'object', `${name}: label must be a string or a locale map`);
-      assert.ok(DEFAULT_LOCALE in label, `${name}: locale map is missing "${DEFAULT_LOCALE}"`);
+      for (const required of [DEFAULT_LOCALE, FALLBACK_LOCALE]) {
+        assert.ok(required in label, `${name}: locale map is missing "${required}"`);
+      }
       for (const [loc, value] of Object.entries(label)) {
         assert.ok(LOCALES.includes(loc), `${name}: unknown locale "${loc}" in a label`);
         assert.equal(typeof value, 'string', `${name}: label.${loc} must be a string`);

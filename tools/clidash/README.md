@@ -67,10 +67,12 @@ sections.
 
 ## Languages (i18n)
 
-The UI ships in **English and French**. The picker sits under the refresh/pause
-controls in the sidebar; the choice is stored in `localStorage`
-(`clidash.locale`) and applied to `<html lang>`. Without a stored choice the
-browser language decides, falling back to English.
+The UI ships in **French (default) and English**. The picker sits under the
+refresh/pause controls in the sidebar; the choice is stored in `localStorage`
+(`clidash.locale`) and applied to `<html lang>`. Without a stored choice the UI
+opens in French — the browser language is deliberately not consulted, so an
+English-locale browser still lands in French. English remains the reference
+dictionary: a key missing from another locale falls back to it.
 
 All UI copy lives in `public/i18n.js` — one flat dictionary per locale, values
 being strings or functions of the interpolated parts. Data coming from the CLIs

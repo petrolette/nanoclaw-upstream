@@ -4,12 +4,19 @@
 // interpolated parts; `t(key, ...args)` calls it. Keys are flat and namespaced
 // by area (nav.*, ov.*, act.*, time.*) so a missing one is obvious in review.
 //
-// Locale resolution order: explicit user pick (localStorage) → browser language
-// → 'en'. The pick is per-browser, not per-server: clidash is read-only and
-// single-user, so there is nothing to persist server-side.
+// Locale resolution: an explicit user pick (localStorage) wins, otherwise
+// French. The browser language is deliberately NOT consulted — this install is
+// French-first, and an English-locale browser should still open in French. The
+// pick is per-browser, not per-server: clidash is read-only and single-user, so
+// there is nothing to persist server-side.
+//
+// DEFAULT_LOCALE is what a fresh visitor gets; FALLBACK_LOCALE is what `t()`
+// falls back to for a key the active locale is missing. They are separate on
+// purpose: English stays the complete reference dictionary.
 
 export const LOCALES = ['en', 'fr'];
-export const DEFAULT_LOCALE = 'en';
+export const DEFAULT_LOCALE = 'fr';
+export const FALLBACK_LOCALE = 'en';
 const STORAGE_KEY = 'clidash.locale';
 
 const DICT = {
@@ -180,10 +187,8 @@ function detectLocale() {
   try {
     const stored = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (stored && LOCALES.includes(stored)) return stored;
-  } catch { /* private mode / no storage — fall through to the browser hint */ }
-  const nav = globalThis.navigator?.languages?.[0] ?? globalThis.navigator?.language ?? '';
-  const short = String(nav).slice(0, 2).toLowerCase();
-  return LOCALES.includes(short) ? short : DEFAULT_LOCALE;
+  } catch { /* private mode / no storage — fall through to the default */ }
+  return DEFAULT_LOCALE;
 }
 
 let locale = detectLocale();
@@ -204,7 +209,7 @@ export function localeTag() { return locale === 'fr' ? 'fr-CH' : 'en-GB'; }
 // Missing keys fall back to English, then to the key itself — a half-translated
 // dictionary degrades to English text instead of blanking the UI.
 export function t(key, ...args) {
-  const entry = DICT[locale]?.[key] ?? DICT[DEFAULT_LOCALE]?.[key];
+  const entry = DICT[locale]?.[key] ?? DICT[FALLBACK_LOCALE]?.[key];
   if (entry === undefined) return key;
   return typeof entry === 'function' ? entry(...args) : entry;
 }
@@ -215,7 +220,7 @@ export function resolveLabel(label, fallback = '') {
   if (label == null) return fallback;
   if (typeof label === 'string') return label;
   if (typeof label === 'object') {
-    return label[locale] ?? label[DEFAULT_LOCALE] ?? Object.values(label)[0] ?? fallback;
+    return label[locale] ?? label[FALLBACK_LOCALE] ?? Object.values(label)[0] ?? fallback;
   }
   return String(label);
 }
