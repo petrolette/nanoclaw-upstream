@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { DICT, LOCALES, DEFAULT_LOCALE, FALLBACK_LOCALE, t, getLocale, setLocale, localeTag, resolveLabel } from '../public/i18n.js';
+import {
+  DICT, GLOSSARY, ENUM_FIELDS, LOCALES, DEFAULT_LOCALE, FALLBACK_LOCALE,
+  t, getLocale, setLocale, localeTag, resolveLabel,
+  resourceLabel, resourceCountLabel, fieldLabel, valueLabel,
+} from '../public/i18n.js';
 
 const appSrc = readFileSync(fileURLToPath(new URL('../public/app.js', import.meta.url)), 'utf8');
 const htmlSrc = readFileSync(fileURLToPath(new URL('../public/index.html', import.meta.url)), 'utf8');
@@ -144,4 +148,122 @@ test('shipped configs use valid label shapes', () => {
       }
     }
   }
+});
+
+// ---------------------------------------------------------------- glossary
+
+// English shows `ncl`'s own words on purpose: what the CLI prints is what you
+// would type back into a terminal. An entry appearing here is a regression.
+test('the English glossary is empty by design', () => {
+  for (const part of ['resources', 'resourcesOne', 'fields', 'values']) {
+    assert.deepEqual(Object.keys(GLOSSARY.en[part]), [], `en.${part} should stay empty`);
+  }
+});
+
+test('every French singular has a matching plural', () => {
+  for (const name of Object.keys(GLOSSARY.fr.resourcesOne)) {
+    assert.ok(name in GLOSSARY.fr.resources, `"${name}" has a singular but no plural`);
+  }
+});
+
+test('resourceLabel translates in French and stays verbatim in English', () => {
+  const before = getLocale();
+  try {
+    setLocale('fr');
+    assert.equal(resourceLabel('messaging-groups'), 'groupes de discussion');
+    assert.equal(resourceLabel('messaging-groups', 1), 'groupe de discussion');
+    assert.equal(resourceLabel('wirings'), 'câblages');
+
+    setLocale('en');
+    assert.equal(resourceLabel('messaging-groups'), 'messaging-groups');
+    assert.equal(resourceLabel('messaging-groups', 1), 'messaging-groups');
+  } finally {
+    setLocale(before);
+  }
+});
+
+// An `ncl` release adding a resource must degrade to its raw name, never to a
+// blank tab or a dictionary key.
+test('an unknown resource falls back to its raw CLI token', () => {
+  const before = getLocale();
+  try {
+    setLocale('fr');
+    assert.equal(resourceLabel('brand-new-thing'), 'brand-new-thing');
+    assert.equal(fieldLabel('brand_new_column'), 'brand_new_column');
+  } finally {
+    setLocale(before);
+  }
+});
+
+test('resourceCountLabel agrees with the row count', () => {
+  const before = getLocale();
+  try {
+    setLocale('fr');
+    assert.equal(resourceCountLabel('sessions', 3), 'sessions');
+    assert.equal(resourceCountLabel('sessions', 1), 'session');
+    assert.equal(resourceCountLabel('tasks', 1), 'tâche');
+
+    setLocale('en'); // historical behaviour: dashes to spaces, drop trailing "s"
+    assert.equal(resourceCountLabel('messaging-groups', 3), 'messaging groups');
+    assert.equal(resourceCountLabel('messaging-groups', 1), 'messaging group');
+  } finally {
+    setLocale(before);
+  }
+});
+
+// Values are translated only for closed-enum columns — a group actually named
+// "active" or a session id must never be rewritten.
+test('valueLabel only rewrites closed-enum columns', () => {
+  const before = getLocale();
+  try {
+    setLocale('fr');
+    assert.equal(valueLabel('container_status', 'running'), 'en marche');
+    assert.equal(valueLabel('role', 'owner'), 'propriétaire');
+    assert.equal(valueLabel('name', 'active'), 'active');       // a name, not an enum
+    assert.equal(valueLabel('id', 'stopped'), 'stopped');       // an id, not an enum
+    assert.equal(valueLabel('status', 'brand-new-state'), 'brand-new-state');
+    assert.equal(valueLabel('status', null), null);
+
+    setLocale('en');
+    assert.equal(valueLabel('container_status', 'running'), 'running');
+  } finally {
+    setLocale(before);
+  }
+});
+
+test('every ENUM_FIELDS entry is a column the glossary also names', () => {
+  for (const column of ENUM_FIELDS) {
+    assert.ok(column in GLOSSARY.fr.fields, `ENUM_FIELDS has "${column}" but fr.fields does not name it`);
+  }
+});
+
+// Coverage against the vocabulary this install actually serves. Kept as a
+// literal snapshot so the test needs no running server; refresh it from
+// /api/clis + /api/r/<cli>/<resource> when ncl gains a resource or column.
+const SERVED_RESOURCES = [
+  'approvals', 'destinations', 'dropped-messages', 'groups', 'members',
+  'messaging-groups', 'policies', 'roles', 'sessions', 'tasks', 'user-dms',
+  'users', 'wirings', 'ps', 'images',
+];
+const SERVED_COLUMNS = [
+  'id', 'name', 'folder', 'created_at', 'agent_group_id', 'messaging_group_id',
+  'thread_id', 'agent_provider', 'status', 'container_status', 'last_active',
+  'channel_type', 'platform_id', 'instance', 'is_group', 'unknown_sender_policy',
+  'denied_at', 'user_id', 'role', 'granted_by', 'granted_at', 'local_name',
+  'target_type', 'target_id', 'display_name', 'engage_mode', 'engage_pattern',
+  'sender_scope', 'ignored_message_policy', 'session_mode', 'threads', 'priority',
+  'session_id', 'series_id', 'row_id', 'process_after', 'recurrence', 'prompt',
+  'has_script', 'origin_session_id', 'tries', 'schedule', 'runs', 'failed_runs',
+  'last_run', 'next_run', 'log', 'kind',
+  'Command', 'CreatedAt', 'HealthStatus', 'ID', 'Image', 'Labels', 'LocalVolumes',
+  'Mounts', 'Names', 'Networks', 'Platform', 'Ports', 'RunningFor', 'Size',
+  'State', 'Status', 'Containers', 'CreatedSince', 'Digest', 'Repository',
+  'SharedSize', 'Tag', 'UniqueSize',
+];
+
+test('French covers every resource and column this install serves', () => {
+  const missingResources = SERVED_RESOURCES.filter((r) => !(r in GLOSSARY.fr.resources));
+  assert.deepEqual(missingResources, [], 'untranslated resources');
+  const missingColumns = SERVED_COLUMNS.filter((c) => !(c in GLOSSARY.fr.fields));
+  assert.deepEqual(missingColumns, [], 'untranslated columns');
 });

@@ -183,6 +183,231 @@ const DICT = {
 
 export { DICT };
 
+// ---------------------------------------------------------------- glossary
+//
+// Vocabulary that arrives from the CLIs rather than from this file: resource
+// names, column names, and the short enum values rendered as badges or summary
+// chips. Anything absent falls back to the raw CLI token, so a new `ncl`
+// resource or column shows up untranslated instead of blank or as a key.
+//
+// English is intentionally EMPTY: it shows `ncl`'s own words, which is what the
+// CLI prints and what you would type back into a terminal. Only French renames.
+//
+// `values` is applied solely to the columns listed in `ENUM_FIELDS` — never to
+// names, ids or free text, so a group actually named "active" is never rewritten.
+
+const EMPTY_GLOSSARY = { resources: {}, resourcesOne: {}, fields: {}, values: {} };
+
+const GLOSSARY = {
+  en: EMPTY_GLOSSARY,
+  fr: {
+    resources: {
+      groups: 'groupes',
+      sessions: 'sessions',
+      'messaging-groups': 'groupes de discussion',
+      wirings: 'câblages',
+      users: 'utilisateurs',
+      roles: 'rôles',
+      members: 'membres',
+      destinations: 'destinations',
+      tasks: 'tâches',
+      'user-dms': 'DM utilisateurs',
+      'dropped-messages': 'messages rejetés',
+      approvals: 'approbations',
+      policies: 'politiques',
+      ps: 'conteneurs',
+      images: 'images',
+    },
+    resourcesOne: {
+      groups: 'groupe',
+      sessions: 'session',
+      'messaging-groups': 'groupe de discussion',
+      wirings: 'câblage',
+      users: 'utilisateur',
+      roles: 'rôle',
+      members: 'membre',
+      destinations: 'destination',
+      tasks: 'tâche',
+      'user-dms': 'DM utilisateur',
+      'dropped-messages': 'message rejeté',
+      approvals: 'approbation',
+      policies: 'politique',
+      ps: 'conteneur',
+      images: 'image',
+    },
+    fields: {
+      // ncl — shared
+      id: 'id',
+      name: 'nom',
+      display_name: 'nom affiché',
+      folder: 'dossier',
+      kind: 'type',
+      created_at: 'créé le',
+      status: 'statut',
+      // agent groups / sessions
+      agent_group_id: "groupe d'agent",
+      messaging_group_id: 'groupe de discussion',
+      thread_id: 'fil',
+      agent_provider: 'fournisseur',
+      container_status: 'statut conteneur',
+      last_active: 'dernière activité',
+      // messaging groups
+      channel_type: 'canal',
+      platform_id: 'id plateforme',
+      instance: 'instance',
+      is_group: 'groupe',
+      unknown_sender_policy: 'expéditeurs inconnus',
+      denied_at: 'refusé le',
+      // container config (detail overlay) / dropped messages
+      cli_scope: 'portée cli',
+      reason: 'motif',
+      provider: 'fournisseur',
+      model: 'modèle',
+      timezone: 'fuseau horaire',
+      packages_apt: 'paquets apt',
+      packages_npm: 'paquets npm',
+      mcp_servers: 'serveurs mcp',
+      // roles / members
+      user_id: 'utilisateur',
+      role: 'rôle',
+      granted_by: 'accordé par',
+      granted_at: 'accordé le',
+      // destinations
+      local_name: 'nom local',
+      target_type: 'type de cible',
+      target_id: 'cible',
+      // wirings
+      engage_mode: 'mode de déclenchement',
+      engage_pattern: 'motif de déclenchement',
+      sender_scope: 'portée expéditeurs',
+      ignored_message_policy: 'messages ignorés',
+      session_mode: 'mode de session',
+      threads: 'fils',
+      priority: 'priorité',
+      // tasks
+      session_id: 'session',
+      series_id: 'série',
+      row_id: 'ligne',
+      process_after: 'à traiter après',
+      recurrence: 'récurrence',
+      prompt: 'consigne',
+      has_script: 'script',
+      origin_session_id: "session d'origine",
+      tries: 'tentatives',
+      schedule: 'planification',
+      runs: 'exécutions',
+      failed_runs: 'échecs',
+      last_run: 'dernière exécution',
+      next_run: 'prochaine exécution',
+      log: 'journal',
+      // docker (capitalised keys — distinct from the ncl ones above)
+      Command: 'commande',
+      CreatedAt: 'créé le',
+      CreatedSince: 'créé depuis',
+      HealthStatus: 'santé',
+      ID: 'id',
+      Image: 'image',
+      Labels: 'étiquettes',
+      LocalVolumes: 'volumes locaux',
+      Mounts: 'montages',
+      Names: 'noms',
+      Networks: 'réseaux',
+      Platform: 'plateforme',
+      Ports: 'ports',
+      RunningFor: 'en marche depuis',
+      Size: 'taille',
+      State: 'état',
+      Status: 'statut',
+      Containers: 'conteneurs',
+      Digest: 'empreinte',
+      Repository: 'dépôt',
+      SharedSize: 'taille partagée',
+      Tag: 'tag',
+      UniqueSize: 'taille unique',
+    },
+    values: {
+      // container / session lifecycle
+      running: 'en marche',
+      idle: 'au repos',
+      starting: 'démarrage',
+      stopped: 'arrêté',
+      exited: 'terminé',
+      none: 'aucun',
+      active: 'actif',
+      closed: 'fermée',
+      error: 'erreur',
+      pending: 'en attente',
+      paused: 'en pause',
+      cancelled: 'annulée',
+      done: 'terminée',
+      // policies / scopes
+      strict: 'strict',
+      open: 'ouvert',
+      all: 'tous',
+      shared: 'partagée',
+      isolated: 'isolée',
+      drop: 'ignorer',
+      queue: 'mettre en file',
+      pattern: 'motif',
+      mention: 'mention',
+      always: 'toujours',
+      channel: 'canal',
+      agent: 'agent',
+      global: 'global',
+      group: 'groupe',
+      disabled: 'désactivé',
+      // roles
+      owner: 'propriétaire',
+      admin: 'administrateur',
+      member: 'membre',
+    },
+  },
+};
+
+// Columns whose cell values are a closed enum, and may therefore be translated.
+// Everything else (names, ids, free text, timestamps) is shown verbatim.
+const ENUM_FIELDS = new Set([
+  'status', 'container_status', 'agent_provider', 'unknown_sender_policy',
+  'role', 'target_type', 'engage_mode', 'sender_scope', 'session_mode',
+  'ignored_message_policy', 'cli_scope', 'reason', 'State',
+]);
+
+const glossary = () => GLOSSARY[locale] ?? EMPTY_GLOSSARY;
+
+export { GLOSSARY, ENUM_FIELDS };
+
+// A resource as shown in the nav, page titles and the detail header. Pass
+// `count === 1` for a single record (the detail overlay) to get the singular.
+// A glossary miss returns the CLI's own token untouched — English therefore
+// still reads `messaging-groups`, exactly as `ncl` prints it.
+export function resourceLabel(name, count = null) {
+  const g = glossary();
+  if (count === 1 && g.resourcesOne[name]) return g.resourcesOne[name];
+  return g.resources[name] ?? name;
+}
+
+// Summary bar: "<n> <resource>". Here a readable, count-agreeing noun matters
+// more than fidelity to the CLI token, so a glossary miss keeps the historical
+// prettifying — dashes to spaces, trailing "s" dropped for a single row.
+export function resourceCountLabel(name, count) {
+  const g = glossary();
+  if (count === 1 && g.resourcesOne[name]) return g.resourcesOne[name];
+  if (g.resources[name]) return g.resources[name];
+  const pretty = String(name).replace(/-/g, ' ');
+  return count === 1 && pretty.endsWith('s') ? pretty.slice(0, -1) : pretty;
+}
+
+// A column / detail key.
+export function fieldLabel(column) {
+  return glossary().fields[column] ?? column;
+}
+
+// A cell value — only for the closed-enum columns listed in ENUM_FIELDS.
+export function valueLabel(column, value) {
+  if (value == null || !ENUM_FIELDS.has(column)) return value;
+  return glossary().values[String(value).toLowerCase()] ?? value;
+}
+
 function detectLocale() {
   try {
     const stored = globalThis.localStorage?.getItem(STORAGE_KEY);

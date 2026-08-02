@@ -9,13 +9,18 @@
 // instant. 60s auto-refresh + a manual button. Background refreshes diff-and-
 // inject (the data DOM rebuilds only when the data signature changes).
 //
-// i18n: every user-facing string goes through `t()` (see i18n.js). Data coming
-// from the CLIs (resource names, column headers, row values) stays verbatim —
-// it is the CLI's own vocabulary, not UI copy. Config-supplied labels go
-// through `resolveLabel()` so they can be either a string or a `{en, fr}` map.
+// i18n: every user-facing string goes through `t()` (see i18n.js). The CLIs'
+// own vocabulary — resource names, column headers, closed-enum cell values —
+// goes through the glossary (`resourceLabel` / `fieldLabel` / `valueLabel`),
+// which falls back to the raw token for anything it doesn't know. Free text
+// (names, ids, timestamps, help output) is never rewritten. Config-supplied
+// labels go through `resolveLabel()` — a string or a `{en, fr}` map.
 
 import { mdToHtml } from './md.js';
-import { t, getLocale, setLocale, localeTag, resolveLabel, LOCALES } from './i18n.js';
+import {
+  t, getLocale, setLocale, localeTag, resolveLabel, LOCALES,
+  resourceLabel, resourceCountLabel, fieldLabel, valueLabel,
+} from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -157,8 +162,8 @@ function kvRows(obj) {
     if (v && typeof v === 'object') valEl = el('pre', { class: 'kv-json' }, JSON.stringify(v, null, 2));
     else if (typeof v === 'string' && ISO_RE.test(v)) valEl = el('span', { class: 'reltime', title: v }, `${relTime(v)}  (${absTime(v)})`);
     else if (v === null || v === undefined) valEl = el('span', { class: 'null' }, 'null');
-    else valEl = el('span', {}, String(v));
-    return el('div', { class: 'kv-row' }, [el('span', { class: 'kv-key' }, k), valEl]);
+    else valEl = el('span', {}, String(valueLabel(k, v)));
+    return el('div', { class: 'kv-row' }, [el('span', { class: 'kv-key', title: k }, fieldLabel(k)), valEl]);
   });
 }
 
@@ -168,14 +173,15 @@ function resolveRef(cliName, ref, id) {
   return row ? (row[ref.label] ?? null) : null;
 }
 
-function badgeChip(value, colorMap) {
+// The colour is keyed off the raw CLI value; only the visible text is localised.
+function badgeChip(value, colorMap, text = String(value)) {
   const color = colorMap[String(value).toLowerCase()] ?? 'gray';
-  return el('span', { class: `badge-status ${color}` }, [el('span', { class: `dot ${color}` }), String(value)]);
+  return el('span', { class: `badge-status ${color}` }, [el('span', { class: `dot ${color}` }), text]);
 }
 
 function buildCell(value, column, ctx) {
   if (ctx.badges?.[column] && value != null && typeof value !== 'object') {
-    return el('td', {}, badgeChip(value, ctx.badges[column]));
+    return el('td', {}, badgeChip(value, ctx.badges[column], String(valueLabel(column, value))));
   }
   if (ctx.enrich?.[column] && value != null) {
     const name = resolveRef(ctx.cliName, ctx.enrich[column], value);
@@ -185,12 +191,11 @@ function buildCell(value, column, ctx) {
       ]);
     }
   }
-  return cellFor(value);
+  return cellFor(valueLabel(column, value));
 }
 
 function summaryBar(resource, rows, col, cli) {
-  let label = resource.replace(/-/g, ' ');
-  if (rows.length === 1 && label.endsWith('s')) label = label.slice(0, -1);
+  const label = resourceCountLabel(resource, rows.length);
   const bits = [el('span', { class: 'sum-count' }, `${rows.length} ${label}`)];
   if (col && rows.some((r) => col in r)) {
     const counts = new Map();
@@ -199,9 +204,10 @@ function summaryBar(resource, rows, col, cli) {
     for (const [v, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
       bits.push(el('span', { class: 'sum-sep' }, '·'));
       const c = colorMap?.[String(v).toLowerCase()] ?? null;
+      const shown = `${valueLabel(col, v)} ×${n}`;
       bits.push(c
-        ? el('span', { class: `badge-status ${c}` }, [el('span', { class: `dot ${c}` }), `${v} ×${n}`])
-        : el('span', { class: 'sum-chip' }, `${v} ×${n}`));
+        ? el('span', { class: `badge-status ${c}` }, [el('span', { class: `dot ${c}` }), shown])
+        : el('span', { class: 'sum-chip' }, shown));
     }
   }
   return el('div', { class: 'summary-bar' }, bits);
@@ -474,7 +480,7 @@ function renderNav() {
   for (const cli of state.clis) {
     items.push(el('div', { class: 'nav-section' }, [icon(cli.name === 'docker' ? 'box' : 'terminal'), el('span', {}, cli.name)]));
     for (const r of cli.resources ?? []) {
-      items.push(navItem(r.name, `r:${cli.name}:${r.name}`, 'nav-sub'));
+      items.push(navItem(resourceLabel(r.name), `r:${cli.name}:${r.name}`, 'nav-sub'));
     }
   }
   if (state.docCollections.length) {
@@ -530,14 +536,17 @@ function renderOverviewPage() {
     const containerColor = container === 'running' ? 'green' : container === 'idle' ? 'green' : container === 'none' ? 'gray' : 'gray';
 
     const fields = [
-      el('div', { class: 'ov-field' }, [el('span', { class: 'k' }, t('ov.container')), badgeChip(container, { running: 'green', idle: 'green', stopped: 'gray', none: 'gray' })]),
+      el('div', { class: 'ov-field' }, [el('span', { class: 'k' }, t('ov.container')),
+        badgeChip(container, { running: 'green', idle: 'green', stopped: 'gray', none: 'gray' }, String(valueLabel('container_status', container)))]),
       field(t('ov.sessions'), String(gs.length)),
       field(t('ov.messages'), t('ov.inOut', msgIn, msgOut)),
       field(t('ov.lastActive'), lastActive ? relTime(lastActive) : '—', lastActive ? '' : 'dim'),
     ];
     if (cfg) {
       fields.push(field(t('ov.providerModel'), `${cfg.provider ?? 'claude'} / ${cfg.model ?? 'default'}`));
-      fields.push(el('div', { class: 'ov-field' }, [el('span', { class: 'k' }, t('ov.cliScope')), badgeChip(cfg.cli_scope ?? 'group', { global: 'amber', group: 'green', disabled: 'gray' })]));
+      const scope = cfg.cli_scope ?? 'group';
+      fields.push(el('div', { class: 'ov-field' }, [el('span', { class: 'k' }, t('ov.cliScope')),
+        badgeChip(scope, { global: 'amber', group: 'green', disabled: 'gray' }, String(valueLabel('cli_scope', scope)))]));
       const pkgs = (cfg.packages_apt?.length ?? 0) + (cfg.packages_npm?.length ?? 0);
       const mcp = Object.keys(cfg.mcp_servers ?? {}).length;
       if (pkgs || mcp) fields.push(field(t('ov.extras'), t('ov.extrasValue', pkgs, mcp)));
@@ -693,16 +702,16 @@ function renderTable(cliName, resource) {
   const snapshot = state.snapshots.get(key);
   const error = state.errors.get(key);
   const canDrill = (cli.commands || []).includes('get');
-  const parts = [el('h2', { class: 'page-title' }, resource)];
+  const parts = [el('h2', { class: 'page-title', title: resource }, resourceLabel(resource))];
   if (cli.help) parts.push(helpPanel(state.helpCache.get(key)));
   if (error && snapshot) parts.push(el('div', { class: 'stale-note' }, t('state.stale', new Date(snapshot.fetchedAt).toLocaleTimeString(localeTag()))));
   if (!snapshot) {
-    parts.push(error ? el('div', { class: 'tab-error' }, [t('state.loadFailed', resource), el('pre', {}, error)]) : el('div', { class: 'empty' }, t('state.loading')));
+    parts.push(error ? el('div', { class: 'tab-error' }, [t('state.loadFailed', resourceLabel(resource)), el('pre', {}, error)]) : el('div', { class: 'empty' }, t('state.loading')));
     content.replaceChildren(...parts); return;
   }
   const rows = snapshot.rows;
   parts.push(summaryBar(resource, rows, cli.summary?.[resource], cli));
-  if (rows.length === 0) { parts.push(el('div', { class: 'empty' }, t('state.noRows', resource))); content.replaceChildren(...parts); return; }
+  if (rows.length === 0) { parts.push(el('div', { class: 'empty' }, t('state.noRows', resourceLabel(resource)))); content.replaceChildren(...parts); return; }
   const columns = [];
   for (const row of rows) for (const k of Object.keys(row)) if (!columns.includes(k)) columns.push(k);
   const ctx = { cliName, enrich: cli.enrich?.[resource], badges: cli.badges };
@@ -712,7 +721,7 @@ function renderTable(cliName, resource) {
       columns.map((c) => buildCell(row[c], c, ctx)));
   });
   parts.push(el('div', { class: 'table-wrap' }, el('table', {}, [
-    el('thead', {}, el('tr', {}, columns.map((c) => el('th', {}, c)))),
+    el('thead', {}, el('tr', {}, columns.map((c) => el('th', { title: c }, fieldLabel(c))))),
     el('tbody', {}, body),
   ])));
   content.replaceChildren(...parts);
@@ -727,7 +736,7 @@ function renderDetail() {
   const d = state.detail;
   const panel = el('div', { class: 'detail-panel' });
   panel.append(el('div', { class: 'detail-head' }, [
-    el('div', {}, [el('span', { class: 'detail-res' }, d.resource), ' ', el('span', { class: 'detail-id' }, d.id)]),
+    el('div', {}, [el('span', { class: 'detail-res', title: d.resource }, resourceLabel(d.resource, 1)), ' ', el('span', { class: 'detail-id' }, d.id)]),
     el('button', { class: 'detail-close', onclick: closeDetail, title: t('detail.close') }, '✕'),
   ]));
   const sub = el('div', { class: 'detail-body' });

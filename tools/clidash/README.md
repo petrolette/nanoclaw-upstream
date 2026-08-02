@@ -75,9 +75,19 @@ English-locale browser still lands in French. English remains the reference
 dictionary: a key missing from another locale falls back to it.
 
 All UI copy lives in `public/i18n.js` — one flat dictionary per locale, values
-being strings or functions of the interpolated parts. Data coming from the CLIs
-(resource names, table columns, row values) is **not** translated: it is the
-CLI's own vocabulary. Adding a locale is a dictionary + an entry in `LOCALES`;
+being strings or functions of the interpolated parts.
+
+The CLIs' own vocabulary goes through a second layer in the same file, the
+**glossary**: `resources` (nav entries, page titles), `fields` (table columns and
+detail keys) and `values` (the short enum values shown as badges, applied only to
+the columns listed in `ENUM_FIELDS`). Anything the glossary doesn't know falls
+back to the raw CLI token, so a new `ncl` resource or column shows up
+untranslated rather than blank. The English glossary is deliberately empty —
+English shows exactly what `ncl` prints, which is what you would type back into a
+terminal. Names, ids, timestamps, free text and `ncl … help` output are never
+rewritten; hovering a translated column or tab shows the raw token as a tooltip.
+
+Adding a locale is a dictionary + a glossary + an entry in `LOCALES`;
 `test/i18n.test.js` fails on any key present in one locale and missing in
 another, on a key whose shape or arity drifts between locales, and on any
 `t('…')` call in `app.js` with no dictionary entry.
