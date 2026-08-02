@@ -69,8 +69,8 @@
     "dir": "../../logs",
     "tailLines": 500,
     "files": [
-      { "name": "nanoclaw.log", "label": "host log" },
-      { "name": "nanoclaw.error.log", "label": "errors" }
+      { "name": "nanoclaw.log", "label": { "en": "host log", "fr": "journal hôte" } },
+      { "name": "nanoclaw.error.log", "label": { "en": "errors", "fr": "erreurs" } }
     ]
   },
   "docs": {
@@ -91,7 +91,7 @@
       },
       {
         "name": "profiles",
-        "label": "Profiles",
+        "label": { "en": "Profiles", "fr": "Profils" },
         "lang": "json",
         "patterns": ["groups/*/profile.json"]
       },

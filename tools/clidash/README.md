@@ -65,6 +65,33 @@ Per-CLI `env` (merged over the server's env) and `cwd` are supported. See
 `enrich`/`badges`/`summary` table decorations and the `activity`/`logs`/`docs`
 sections.
 
+## Languages (i18n)
+
+The UI ships in **English and French**. The picker sits under the refresh/pause
+controls in the sidebar; the choice is stored in `localStorage`
+(`clidash.locale`) and applied to `<html lang>`. Without a stored choice the
+browser language decides, falling back to English.
+
+All UI copy lives in `public/i18n.js` — one flat dictionary per locale, values
+being strings or functions of the interpolated parts. Data coming from the CLIs
+(resource names, table columns, row values) is **not** translated: it is the
+CLI's own vocabulary. Adding a locale is a dictionary + an entry in `LOCALES`;
+`test/i18n.test.js` fails on any key present in one locale and missing in
+another, on a key whose shape or arity drifts between locales, and on any
+`t('…')` call in `app.js` with no dictionary entry.
+
+Config-supplied labels (`logs.files[].label`, `docs.collections[].label`) accept
+either a plain string — shown as-is everywhere — or a per-locale map:
+
+```jsonc
+{ "name": "nanoclaw.log", "label": { "en": "host log", "fr": "journal hôte" } }
+```
+
+> **Careful:** this translation lives in the installed copy under
+> `tools/clidash/`, not in the upstream `/add-clidash` skill payload. Re-running
+> `/add-clidash` or `/update-skills` overwrites `tools/clidash/` from upstream
+> and drops it — re-apply this commit afterwards.
+
 ## API
 
 | Route | Returns |

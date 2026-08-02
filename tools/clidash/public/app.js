@@ -8,8 +8,14 @@
 // Refresh UX: on first load every resource of every CLI is prefetched so nav is
 // instant. 60s auto-refresh + a manual button. Background refreshes diff-and-
 // inject (the data DOM rebuilds only when the data signature changes).
+//
+// i18n: every user-facing string goes through `t()` (see i18n.js). Data coming
+// from the CLIs (resource names, column headers, row values) stays verbatim —
+// it is the CLI's own vocabulary, not UI copy. Config-supplied labels go
+// through `resolveLabel()` so they can be either a string or a `{en, fr}` map.
 
 import { mdToHtml } from './md.js';
+import { t, getLocale, setLocale, localeTag, resolveLabel, LOCALES } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -83,24 +89,23 @@ function relTime(iso) {
   const ms = Date.now() - new Date(iso).getTime();
   if (Number.isNaN(ms)) return iso;
   const s = Math.round(ms / 1000);
-  if (s < 0) return new Date(iso).toLocaleString();
-  if (s < 60) return `${s}s ago`;
+  if (s < 0) return new Date(iso).toLocaleString(localeTag());
+  if (s < 60) return t('time.secondsAgo', s);
   const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return t('time.minutesAgo', m);
   const h = Math.round(m / 60);
-  if (h < 48) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
+  if (h < 48) return t('time.hoursAgo', h);
+  return t('time.daysAgo', Math.round(h / 24));
 }
 
 function coarseAgo(date) {
   const s = (Date.now() - date.getTime()) / 1000;
-  if (s < 60) return 'less than a minute ago';
+  if (s < 60) return t('time.coarseUnderMinute');
   const m = Math.floor(s / 60);
-  if (m < 60) return m === 1 ? '1 minute ago' : `${m} minutes ago`;
+  if (m < 60) return t('time.coarseMinutes', m);
   const h = Math.floor(m / 60);
-  if (h < 24) return h === 1 ? '1 hour ago' : `${h} hours ago`;
-  const d = Math.floor(h / 24);
-  return d === 1 ? '1 day ago' : `${d} days ago`;
+  if (h < 24) return t('time.coarseHours', h);
+  return t('time.coarseDays', Math.floor(h / 24));
 }
 
 function staleness(lastActive) {
@@ -223,7 +228,7 @@ const activeCollection = () => {
 
 async function fetchJson(url) {
   const res = await fetch(url);
-  return res.json().catch(() => ({ ok: false, error: `Bad response from ${url}` }));
+  return res.json().catch(() => ({ ok: false, error: t('state.badResponse', url) }));
 }
 
 async function refresh(force = false) {
@@ -293,7 +298,7 @@ async function openDoc(collectionName, path) {
   const key = `${collectionName}\0${path}`;
   if (!state.docCache.has(key)) {
     const body = await fetchJson(`/api/doc?c=${encodeURIComponent(collectionName)}&p=${encodeURIComponent(path)}`);
-    state.docCache.set(key, body.ok ? { lang: body.lang, content: body.content } : { lang: 'error', content: body.error || 'Failed to load' });
+    state.docCache.set(key, body.ok ? { lang: body.lang, content: body.content } : { lang: 'error', content: body.error || t('state.loadFailedShort') });
   }
   state.renderedSig = null;
   render();
@@ -321,14 +326,14 @@ function closeDetail() { state.detail = null; state.renderedSig = null; render()
 // fields (everything after the first blank line) sit behind a collapse.
 function helpPanel(text) {
   if (text === null) return null; // explicitly no help
-  if (text === undefined) return el('div', { class: 'help-panel' }, el('div', { class: 'help-head dim' }, 'loading help…'));
+  if (text === undefined) return el('div', { class: 'help-panel' }, el('div', { class: 'help-head dim' }, t('help.loading')));
   const idx = text.indexOf('\n\n');
   const head = (idx >= 0 ? text.slice(0, idx) : text).trim();
   const body = idx >= 0 ? text.slice(idx + 2).trim() : '';
   return el('div', { class: 'help-panel' }, [
     el('div', { class: 'help-head' }, head),
     body ? el('details', { class: 'help-more' }, [
-      el('summary', {}, 'verbs & fields'),
+      el('summary', {}, t('help.more')),
       el('pre', { class: 'help-text' }, body),
     ]) : null,
   ]);
@@ -381,16 +386,51 @@ function dataSignature() {
     docGroupsOpen: coll ? [...state.openDocGroups] : null,
     docContent: coll ? state.docCache.get(`${coll.name}\0${state.activeDocPath}`)?.content ?? null : null,
     detail: state.detail, paused: state.paused, sidebarOpen: state.sidebarOpen,
+    locale: getLocale(),
   });
+}
+
+// Static chrome (buttons, tooltips, <html lang>) — re-applied on every locale
+// switch, so it lives outside the signature-diffed data render.
+function renderChrome() {
+  document.documentElement.lang = getLocale();
+  const hamburger = $('hamburger');
+  hamburger.title = t('app.menu');
+  hamburger.setAttribute('aria-label', t('app.menuToggle'));
+
+  const refresh = $('refresh');
+  refresh.textContent = t('ctl.refresh');
+  refresh.title = t('ctl.refreshTitle');
+
+  const pause = $('pause');
+  pause.textContent = state.paused ? t('ctl.resume') : t('ctl.pause');
+  pause.title = state.paused ? t('ctl.resumeTitle') : t('ctl.pauseTitle');
+  pause.classList.toggle('paused', state.paused);
+
+  const box = $('langswitch');
+  box.setAttribute('aria-label', t('ctl.language'));
+  box.replaceChildren(...LOCALES.map((code) => el('button', {
+    class: 'lang' + (getLocale() === code ? ' active' : ''),
+    'aria-pressed': String(getLocale() === code),
+    onclick: () => switchLocale(code),
+  }, code.toUpperCase())));
+}
+
+function switchLocale(code) {
+  if (code === getLocale()) return;
+  setLocale(code);
+  state.renderedSig = null;
+  render();
 }
 
 function renderControls() {
   $('updated').textContent = state.lastUpdated
-    ? `updated ${coarseAgo(state.lastUpdated)}${state.paused ? ' · paused' : ''}` : '';
+    ? `${t('ctl.updated', coarseAgo(state.lastUpdated))}${state.paused ? t('ctl.paused') : ''}` : '';
   $('refresh').classList.toggle('spinning', state.refreshing);
 }
 
 function render() {
+  renderChrome();
   renderControls();
   const sig = dataSignature();
   if (sig === state.renderedSig) return;
@@ -405,8 +445,8 @@ function render() {
   const banner = $('banner');
   const tabError = v.type === 'resource' ? state.errors.get(`${v.cli}/${v.resource}`) : null;
   const cli = v.type === 'resource' ? state.clis.find((c) => c.name === v.cli) : null;
-  const bannerMsg = cli?.error ? `Discovery failed for ${v.cli}: ${cli.error}`
-    : (tabError ? `CLI unreachable — showing last good snapshot. ${tabError.split('\n')[0]}` : null);
+  const bannerMsg = cli?.error ? t('state.discoveryFailed', v.cli, cli.error)
+    : (tabError ? t('state.cliUnreachable', tabError.split('\n')[0]) : null);
   banner.hidden = !bannerMsg;
   banner.textContent = bannerMsg ?? '';
 
@@ -428,8 +468,8 @@ function navItem(label, view, cls = '', iconName = null) {
 
 function renderNav() {
   const nav = $('nav');
-  const items = [navItem('Overview', 'overview', '', 'overview')];
-  if (state.activityConfigured) items.push(navItem('Activity', 'activity', '', 'activity'));
+  const items = [navItem(t('nav.overview'), 'overview', '', 'overview')];
+  if (state.activityConfigured) items.push(navItem(t('nav.activity'), 'activity', '', 'activity'));
 
   for (const cli of state.clis) {
     items.push(el('div', { class: 'nav-section' }, [icon(cli.name === 'docker' ? 'box' : 'terminal'), el('span', {}, cli.name)]));
@@ -438,15 +478,15 @@ function renderNav() {
     }
   }
   if (state.docCollections.length) {
-    items.push(el('div', { class: 'nav-section' }, [icon('folder'), el('span', {}, 'Files')]));
+    items.push(el('div', { class: 'nav-section' }, [icon('folder'), el('span', {}, t('nav.files'))]));
     for (const coll of state.docCollections) {
-      items.push(navItem(coll.label, `doc:${coll.name}`, 'nav-sub'));
+      items.push(navItem(resolveLabel(coll.label, coll.name), `doc:${coll.name}`, 'nav-sub'));
     }
   }
   if (state.logs.length) {
-    items.push(el('div', { class: 'nav-section' }, [icon('logs'), el('span', {}, 'Logs')]));
+    items.push(el('div', { class: 'nav-section' }, [icon('logs'), el('span', {}, t('nav.logs'))]));
     for (const lg of state.logs) {
-      items.push(navItem(lg.label, `log:${lg.name}`, 'nav-sub'));
+      items.push(navItem(resolveLabel(lg.label, lg.name), `log:${lg.name}`, 'nav-sub'));
     }
   }
   nav.replaceChildren(...items);
@@ -469,7 +509,7 @@ function renderCmdline(v) {
 function renderOverviewPage() {
   const content = $('content');
   const groups = state.snapshots.get('ncl/groups')?.rows;
-  if (!groups) { content.replaceChildren(el('div', { class: 'empty' }, 'Loading…')); return; }
+  if (!groups) { content.replaceChildren(el('div', { class: 'empty' }, t('state.loading'))); return; }
   const sessions = state.snapshots.get('ncl/sessions')?.rows ?? [];
   const wirings = state.snapshots.get('ncl/wirings')?.rows ?? [];
   const mgs = state.snapshots.get('ncl/messaging-groups')?.rows ?? [];
@@ -490,17 +530,17 @@ function renderOverviewPage() {
     const containerColor = container === 'running' ? 'green' : container === 'idle' ? 'green' : container === 'none' ? 'gray' : 'gray';
 
     const fields = [
-      el('div', { class: 'ov-field' }, [el('span', { class: 'k' }, 'container'), badgeChip(container, { running: 'green', idle: 'green', stopped: 'gray', none: 'gray' })]),
-      field('sessions', String(gs.length)),
-      field('messages', `${msgIn} in · ${msgOut} out`),
-      field('last active', lastActive ? relTime(lastActive) : '—', lastActive ? '' : 'dim'),
+      el('div', { class: 'ov-field' }, [el('span', { class: 'k' }, t('ov.container')), badgeChip(container, { running: 'green', idle: 'green', stopped: 'gray', none: 'gray' })]),
+      field(t('ov.sessions'), String(gs.length)),
+      field(t('ov.messages'), t('ov.inOut', msgIn, msgOut)),
+      field(t('ov.lastActive'), lastActive ? relTime(lastActive) : '—', lastActive ? '' : 'dim'),
     ];
     if (cfg) {
-      fields.push(field('provider / model', `${cfg.provider ?? 'claude'} / ${cfg.model ?? 'default'}`));
-      fields.push(el('div', { class: 'ov-field' }, [el('span', { class: 'k' }, 'cli scope'), badgeChip(cfg.cli_scope ?? 'group', { global: 'amber', group: 'green', disabled: 'gray' })]));
+      fields.push(field(t('ov.providerModel'), `${cfg.provider ?? 'claude'} / ${cfg.model ?? 'default'}`));
+      fields.push(el('div', { class: 'ov-field' }, [el('span', { class: 'k' }, t('ov.cliScope')), badgeChip(cfg.cli_scope ?? 'group', { global: 'amber', group: 'green', disabled: 'gray' })]));
       const pkgs = (cfg.packages_apt?.length ?? 0) + (cfg.packages_npm?.length ?? 0);
       const mcp = Object.keys(cfg.mcp_servers ?? {}).length;
-      if (pkgs || mcp) fields.push(field('extras', `${pkgs} pkgs · ${mcp} mcp`));
+      if (pkgs || mcp) fields.push(field(t('ov.extras'), t('ov.extrasValue', pkgs, mcp)));
     }
 
     return el('div', { class: 'ov-card' }, [
@@ -515,7 +555,7 @@ function renderOverviewPage() {
   });
 
   content.replaceChildren(
-    el('h2', { class: 'page-title' }, 'Agents overview'),
+    el('h2', { class: 'page-title' }, t('ov.title')),
     el('div', { class: 'ov-cards' }, cards),
   );
 }
@@ -525,7 +565,7 @@ function renderOverviewPage() {
 function renderActivity() {
   const content = $('content');
   const data = state.activity;
-  if (!data) { content.replaceChildren(el('div', { class: 'empty' }, 'Loading…')); return; }
+  if (!data) { content.replaceChildren(el('div', { class: 'empty' }, t('state.loading'))); return; }
   const { series, sessions } = data;
   const totalIn = series.reduce((a, d) => a + d.in, 0);
   const totalOut = series.reduce((a, d) => a + d.out, 0);
@@ -543,14 +583,14 @@ function renderActivity() {
   }
   series.forEach((d, i) => {
     const x = padL + i * slot;
-    chart.append(svg('rect', { x: x + 1, y: yOf(d.in), width: bw, height: yOf(0) - yOf(d.in), class: 'bar-in' }, [svg('title', {}, `${d.date}: ${d.in} in`)]));
-    chart.append(svg('rect', { x: x + 1 + bw, y: yOf(d.out), width: bw, height: yOf(0) - yOf(d.out), class: 'bar-out' }, [svg('title', {}, `${d.date}: ${d.out} out`)]));
+    chart.append(svg('rect', { x: x + 1, y: yOf(d.in), width: bw, height: yOf(0) - yOf(d.in), class: 'bar-in' }, [svg('title', {}, t('act.chartIn', d.date, d.in))]));
+    chart.append(svg('rect', { x: x + 1 + bw, y: yOf(d.out), width: bw, height: yOf(0) - yOf(d.out), class: 'bar-out' }, [svg('title', {}, t('act.chartOut', d.date, d.out))]));
     if (i % 2 === 0) chart.append(svg('text', { x: x + bw, y: H - 8, class: 'axis', 'text-anchor': 'middle' }, d.date.slice(5)));
   });
   const legend = el('div', { class: 'activity-legend' }, [
-    el('span', {}, [el('span', { class: 'lg in' }), `inbound (${totalIn})`]),
-    el('span', {}, [el('span', { class: 'lg out' }), `outbound (${totalOut})`]),
-    el('span', { class: 'dim' }, `last ${series.length} days`),
+    el('span', {}, [el('span', { class: 'lg in' }), t('act.inbound', totalIn)]),
+    el('span', {}, [el('span', { class: 'lg out' }), t('act.outbound', totalOut)]),
+    el('span', { class: 'dim' }, t('act.lastDays', series.length)),
   ]);
   const sessRows = [...sessions].sort((a, b) => (b.lastActivity || '').localeCompare(a.lastActivity || '')).map((s) => {
     const groupName = resolveRef('ncl', { ref: 'groups', label: 'name' }, s.agent_group_id) ?? s.agent_group_id;
@@ -563,12 +603,12 @@ function renderActivity() {
     ]);
   });
   content.replaceChildren(
-    el('h2', { class: 'page-title' }, 'Message activity'),
+    el('h2', { class: 'page-title' }, t('act.title')),
     el('div', { class: 'activity-wrap' }, [
       legend,
       el('div', { class: 'chart-box' }, chart),
       el('div', { class: 'table-wrap' }, el('table', { class: 'activity-table' }, [
-        el('thead', {}, el('tr', {}, ['agent', 'session', 'in', 'out', 'last activity'].map((h) => el('th', {}, h)))),
+        el('thead', {}, el('tr', {}, [t('act.colAgent'), t('act.colSession'), t('act.colIn'), t('act.colOut'), t('act.colLastActivity')].map((h) => el('th', {}, h)))),
         el('tbody', {}, sessRows),
       ])),
     ]),
@@ -579,9 +619,9 @@ function renderActivity() {
 
 function renderLogPage(name) {
   const content = $('content');
-  const label = state.logs.find((l) => l.name === name)?.label ?? name;
+  const label = resolveLabel(state.logs.find((l) => l.name === name)?.label, name);
   const cached = state.logCache.get(name);
-  if (!cached) { content.replaceChildren(el('h2', { class: 'page-title' }, label), el('div', { class: 'empty' }, 'Loading…')); return; }
+  if (!cached) { content.replaceChildren(el('h2', { class: 'page-title' }, label), el('div', { class: 'empty' }, t('state.loading'))); return; }
   const view = el('div', { class: 'log-view' });
   for (const line of cached.text.split('\n')) {
     const lvl = /\bERROR\b/i.test(line) ? 'err' : /\bWARN(ING)?\b/i.test(line) ? 'warn' : '';
@@ -597,8 +637,9 @@ function renderLogPage(name) {
 function renderDocs() {
   const coll = activeCollection();
   const content = $('content');
-  if (!coll) { content.replaceChildren(el('div', { class: 'empty' }, 'No documents.')); return; }
-  if (!coll.files.length) { content.replaceChildren(el('div', { class: 'empty' }, `No ${coll.label.toLowerCase()}.`)); return; }
+  if (!coll) { content.replaceChildren(el('div', { class: 'empty' }, t('doc.none'))); return; }
+  const collLabel = resolveLabel(coll.label, coll.name);
+  if (!coll.files.length) { content.replaceChildren(el('div', { class: 'empty' }, t('doc.emptyCollection', collLabel))); return; }
   // display name: drop the group prefix, the `/SKILL.md` tail (show the skill
   // dir), and the .md extension — leaving e.g. "meeting-tagger" or "2026-06-13-…"
   const itemName = (label) => {
@@ -629,8 +670,8 @@ function renderDocs() {
   }
   const pane = el('div', { class: 'doc-content' });
   const cached = state.activeDocPath ? state.docCache.get(`${coll.name}\0${state.activeDocPath}`) : null;
-  if (!state.activeDocPath) pane.append(el('div', { class: 'empty' }, 'Select a document.'));
-  else if (!cached) pane.append(el('div', { class: 'empty' }, 'Loading…'));
+  if (!state.activeDocPath) pane.append(el('div', { class: 'empty' }, t('doc.select')));
+  else if (!cached) pane.append(el('div', { class: 'empty' }, t('state.loading')));
   else if (cached.lang === 'error') pane.append(el('div', { class: 'tab-error' }, cached.content));
   else if (cached.lang === 'json') {
     let pretty = cached.content;
@@ -639,7 +680,7 @@ function renderDocs() {
   } else if (cached.lang === 'markdown') {
     const md = el('div', { class: 'markdown' }); md.innerHTML = mdToHtml(cached.content); pane.append(md);
   } else pane.append(el('pre', { class: 'code' }, cached.content));
-  content.replaceChildren(el('h2', { class: 'page-title' }, coll.label), el('div', { class: 'doc-viewer' }, [list, pane]));
+  content.replaceChildren(el('h2', { class: 'page-title' }, collLabel), el('div', { class: 'doc-viewer' }, [list, pane]));
 }
 
 // ---- resource table ----
@@ -647,21 +688,21 @@ function renderDocs() {
 function renderTable(cliName, resource) {
   const content = $('content');
   const cli = state.clis.find((c) => c.name === cliName);
-  if (!cli) { content.replaceChildren(el('div', { class: 'empty' }, 'No such CLI.')); return; }
+  if (!cli) { content.replaceChildren(el('div', { class: 'empty' }, t('state.noCli'))); return; }
   const key = `${cliName}/${resource}`;
   const snapshot = state.snapshots.get(key);
   const error = state.errors.get(key);
   const canDrill = (cli.commands || []).includes('get');
   const parts = [el('h2', { class: 'page-title' }, resource)];
   if (cli.help) parts.push(helpPanel(state.helpCache.get(key)));
-  if (error && snapshot) parts.push(el('div', { class: 'stale-note' }, `⚠ live fetch failing — snapshot from ${new Date(snapshot.fetchedAt).toLocaleTimeString()}`));
+  if (error && snapshot) parts.push(el('div', { class: 'stale-note' }, t('state.stale', new Date(snapshot.fetchedAt).toLocaleTimeString(localeTag()))));
   if (!snapshot) {
-    parts.push(error ? el('div', { class: 'tab-error' }, [`Failed to load ${resource}.`, el('pre', {}, error)]) : el('div', { class: 'empty' }, 'Loading…'));
+    parts.push(error ? el('div', { class: 'tab-error' }, [t('state.loadFailed', resource), el('pre', {}, error)]) : el('div', { class: 'empty' }, t('state.loading')));
     content.replaceChildren(...parts); return;
   }
   const rows = snapshot.rows;
   parts.push(summaryBar(resource, rows, cli.summary?.[resource], cli));
-  if (rows.length === 0) { parts.push(el('div', { class: 'empty' }, `No ${resource}.`)); content.replaceChildren(...parts); return; }
+  if (rows.length === 0) { parts.push(el('div', { class: 'empty' }, t('state.noRows', resource))); content.replaceChildren(...parts); return; }
   const columns = [];
   for (const row of rows) for (const k of Object.keys(row)) if (!columns.includes(k)) columns.push(k);
   const ctx = { cliName, enrich: cli.enrich?.[resource], badges: cli.badges };
@@ -687,14 +728,14 @@ function renderDetail() {
   const panel = el('div', { class: 'detail-panel' });
   panel.append(el('div', { class: 'detail-head' }, [
     el('div', {}, [el('span', { class: 'detail-res' }, d.resource), ' ', el('span', { class: 'detail-id' }, d.id)]),
-    el('button', { class: 'detail-close', onclick: closeDetail, title: 'Close' }, '✕'),
+    el('button', { class: 'detail-close', onclick: closeDetail, title: t('detail.close') }, '✕'),
   ]));
   const sub = el('div', { class: 'detail-body' });
-  if (d.loading) sub.append(el('div', { class: 'empty' }, 'Loading…'));
+  if (d.loading) sub.append(el('div', { class: 'empty' }, t('state.loading')));
   else if (d.error) sub.append(el('div', { class: 'tab-error' }, d.error));
   else if (d.record) sub.append(el('div', { class: 'kv' }, kvRows(d.record)));
   if (d.config) {
-    sub.append(el('div', { class: 'detail-section' }, 'Container config'));
+    sub.append(el('div', { class: 'detail-section' }, t('detail.containerConfig')));
     sub.append(el('div', { class: 'kv' }, kvRows(d.config)));
   }
   panel.append(sub);
@@ -705,9 +746,7 @@ function renderDetail() {
 
 $('pause').addEventListener('click', () => {
   state.paused = !state.paused;
-  $('pause').textContent = state.paused ? '▶ resume' : '⏸ pause';
-  $('pause').classList.toggle('paused', state.paused);
-  state.renderedSig = null; render();
+  state.renderedSig = null; render(); // renderChrome() relabels the button
 });
 $('refresh').addEventListener('click', () => { if (!state.refreshing) refresh(true); });
 $('hamburger').addEventListener('click', () => { state.sidebarOpen = !state.sidebarOpen; state.renderedSig = null; render(); });
@@ -720,4 +759,5 @@ async function tick() {
   else renderControls();
   setTimeout(tick, state.refreshSeconds * 1000);
 }
+renderChrome(); // label the controls before the first fetch resolves
 tick();

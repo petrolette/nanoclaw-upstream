@@ -84,6 +84,17 @@ h1::before { content: "▍"; color: var(--accent); margin-right: 4px; }
 .refresh.spinning { color: var(--accent); border-color: var(--accent); animation: pulse 0.85s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.5; } }
 
+/* Locale picker — a segmented control, one button per available locale. */
+.sidebar .langswitch { display: flex; gap: 4px; padding: 0 4px; }
+.lang {
+  flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--faint); padding: 4px 8px; font-size: 11px; letter-spacing: 0.6px;
+  font-family: var(--font-mono); cursor: pointer;
+  transition: color var(--ease), border-color var(--ease), background var(--ease);
+}
+.lang:hover { color: var(--text); border-color: var(--border-strong); background: var(--panel-2); }
+.lang.active { color: var(--accent); border-color: var(--accent); }
+
 .nav { display: flex; flex-direction: column; gap: 1px; margin-top: 6px; }
 .nav-section {
   color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px;
