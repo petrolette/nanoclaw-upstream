@@ -1,0 +1,18 @@
+dropped-messages: Dropped message log — tracks messages that were dropped by the router or access gate. Aggregates by (channel_type, platform_id) with a running count. Reasons include: no_agent_wired (no wiring exists), no_agent_engaged (wiring exists but engage rules didn't fire), unknown_sender_strict (sender not recognized, strict policy), unknown_sender_request_approval (sender not recognized, approval requested).
+
+Verbs:
+  list
+
+Run `ncl dropped-messages help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --channel-type               Channel adapter type of the dropped message.
+  --platform-id                Platform chat ID where the message was dropped.
+  --user-id                    Sender user ID if resolved, null otherwise.
+  --sender-name                Sender display name if available.
+  --reason                     Why the message was dropped. (values: no_agent_wired | no_agent_engaged | unknown_sender_strict | unknown_sender_request_approval)
+  --messaging-group-id         Messaging group ID if resolved.
+  --agent-group-id             Target agent group ID if resolved.
+  --message-count              Number of dropped messages from this sender on this chat.
+  --first-seen                 First drop timestamp.
+  --last-seen                  Most recent drop timestamp.

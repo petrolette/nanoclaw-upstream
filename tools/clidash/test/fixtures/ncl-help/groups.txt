@@ -1,0 +1,25 @@
+groups: Agent group — a logical agent identity. Each group has its own workspace folder (CLAUDE.md, skills, container config), conversation history, and container image. Multiple messaging groups can be wired to one agent group.
+
+Verbs:
+  list
+  get <id>
+  update <id> [approval]
+  create [approval] — Create (or return the existing) agent group with its container config. Idempotent on --folder. With --template <ref>, stamp from a local template under templates/ (MCP servers + instructions + skills + paused recurring tasks). Use --folder <slug> and --name <display name>. Optional --timezone <IANA id> sets the group timezone (template task schedules fire in it); like --name, it is ignored when the folder already exists.
+  delete [approval] — Delete an agent group and its dependent rows (sessions, destinations, approvals, role grants, memberships, channel wirings). FK-ordered cascade in a single transaction. Use --id <group-id>. Out of scope: killing running containers, on-disk cleanup of groups/<folder>/ and data/v2-sessions/<group-id>/.
+  restart [approval] — Restart containers for a group. Use --id <group-id> [--rebuild] [--message <text>]. From inside a container, --id is auto-filled and only the calling session is restarted. --rebuild rebuilds the container image first (required for package changes). --message sets an on-wake instruction for the fresh container to act on when it starts — use this when you need to continue after the restart (e.g. verify a new tool works, notify the user). Without --message, the container stops and only starts again on the next user message.
+  config get — Show the container config for a group. Use --id <group-id>.
+  config update [approval] — Update container config scalar fields. Changes are saved but do NOT take effect until you run `ncl groups restart`. Use --id <group-id> and any of: --provider, --model, --effort, --image-tag, --assistant-name, --max-messages-per-prompt, --cli-scope, --timezone (IANA id like "Europe/Lisbon"; "" clears back to the install default; scheduled-task times follow it immediately, message display after restart).
+  config add-mcp-server [approval] — Add an MCP server to a group. Requires `ncl groups restart` to take effect. Use --id <group-id> --name <server-name> --command <cmd> [--args <json-array>] [--env <json-object>].
+  config remove-mcp-server [approval] — Remove an MCP server from a group. Requires `ncl groups restart` to take effect. Use --id <group-id> --name <server-name>.
+  config add-package [approval] — Add a package to a group. Requires `ncl groups restart --rebuild` to take effect. Use --id <group-id> and --apt <pkg> or --npm <pkg>.
+  config remove-package [approval] — Remove a package from a group. Requires `ncl groups restart --rebuild` to take effect. Use --id <group-id> and --apt <pkg> or --npm <pkg>.
+  config add-mount [approval] — Mount a host directory into a group's containers. OPERATOR-ONLY — never runnable from inside a container (mounting host paths is a filesystem-access boundary). Requires `ncl groups restart` to take effect. Use --id <group-id> --host <host-path> --container <container-path> [--ro].
+  config remove-mount [approval] — Remove a host mount from a group. OPERATOR-ONLY. Requires `ncl groups restart` to take effect. Use --id <group-id> --host <host-path> --container <container-path>.
+
+Run `ncl groups help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --id                         UUID. (auto)
+  --name                       Display name shown in logs, help output, and channel adapters. Does not need to be unique. (required, updatable)
+  --folder                     Directory name under groups/ on the host. Must be unique. Contains CLAUDE.md, skills/, and container.json. Cannot be changed after creation. (required)
+  --created-at                 Auto-set. (auto)

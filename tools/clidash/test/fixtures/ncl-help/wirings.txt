@@ -1,0 +1,23 @@
+wirings: Wiring — connects a messaging group to an agent group. Determines which agent handles messages from which chat. The same messaging group can be wired to multiple agents; the same agent can be wired to multiple messaging groups.
+
+Verbs:
+  list
+  get <id>
+  update <id> [approval]
+  delete <id> [approval]
+  create [approval] — Wire a messaging group to an agent group. Identify the messaging group by --messaging-group-id OR --channel-type + --platform-id (+ --instance); identify the agent by --agent-group-id OR --agent-group <folder>. Idempotent on (messaging group, agent group). Engagement flags: --engage-mode, --engage-pattern, --session-mode, --sender-scope, --ignored-message-policy, --threads, --priority. Omitted engage flags default from the channel adapter declaration.
+
+Run `ncl wirings help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --id                         UUID. (auto)
+  --messaging-group-id         The chat/channel to route from. References messaging_groups.id. (required)
+  --agent-group-id             The agent that handles messages. References agent_groups.id. (required)
+  --engage-mode                When the agent engages. "mention" — only when @mentioned or in DMs. "mention-sticky" — once mentioned in a thread, the agent subscribes and responds to all subsequent messages in that thread without needing further mentions. "pattern" — matches every message against engage_pattern regex. Default: declared by the channel adapter for the target chat (DM vs group); "mention" when the channel has no declaration. (updatable, default: mention, values: pattern | mention | mention-sticky)
+  --engage-pattern             Regex for engage_mode=pattern. Required when mode is pattern. Use "." to match every message (always-on). Ignored for mention modes. (updatable)
+  --sender-scope               "all" — any sender (subject to unknown_sender_policy). "known" — only users with a role or membership in this agent group. (updatable, default: all, values: all | known)
+  --ignored-message-policy     What happens to messages that don't trigger engagement. "drop" — agent never sees them. "accumulate" — stored as background context (trigger=0) so the agent has prior context when eventually triggered. (updatable, default: drop, values: drop | accumulate)
+  --session-mode               "shared" — one session per (agent, messaging group). "per-thread" — separate session per thread/topic. "agent-shared" — one session across all messaging groups wired to this agent. Note: threaded adapters in group chats force per-thread regardless of this setting. (updatable, default: shared, values: shared | per-thread | agent-shared)
+  --threads                    Per-wiring thread override: honor platform thread ids for this wiring (per-thread sessions in groups; replies, typing, and cards land in-thread). NULL = inherit channel default. Can disable threads on a threaded platform, never enable them on a non-threaded one. (updatable)
+  --priority                   Fanout order when multiple agents are wired to the same messaging group — higher priority first. (updatable, default: 0)
+  --created-at                 Auto-set. (auto)

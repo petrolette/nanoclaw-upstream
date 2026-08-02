@@ -1,0 +1,22 @@
+messaging-groups: Messaging group — one chat or channel on one platform (a Telegram DM, a Discord channel, a Slack thread root, an email address). Identity is the (channel_type, platform_id, instance) triple, which must be unique.
+
+Verbs:
+  list
+  get <id>
+  create [approval]
+  update <id> [approval]
+  delete <id> [approval]
+  send [approval] — Inject a message into a messaging group as if a sender posted it, waking the wired agent — used to send a welcome on first wire. Use --channel-type, --platform-id, --text, optionally --instance, --sender-id, --sender.
+
+Run `ncl messaging-groups help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --id                         UUID. (auto)
+  --channel-type               Channel adapter type — matches the adapter registered by /add-<channel> (e.g. telegram, discord, slack, whatsapp). (required)
+  --platform-id                Platform-specific chat ID. Format varies: Telegram chat ID, Discord channel snowflake, Slack channel ID, phone number, email address. (required)
+  --instance                   Adapter instance that owns this chat, when running N adapters of one channel type. Defaults to channel_type (the default instance) when omitted. (updatable)
+  --name                       Display name. Often auto-populated by the channel adapter. (updatable)
+  --is-group                   Multi-user group chat (1) or direct message (0). Affects session scoping. (updatable, default: 0)
+  --unknown-sender-policy      What happens when an unrecognized sender posts. "strict" drops silently. "request_approval" sends an approval card to an admin. "public" allows anyone. Default: declared by the channel adapter for this context (DM vs group); "strict" when the channel has no declaration. (updatable, default: strict, values: strict | request_approval | public)
+  --denied-at                  Set when the owner explicitly denies registering this channel. While set, the router drops all messages silently without re-escalating. Cleared by any explicit wiring mutation. (updatable)
+  --created-at                 Auto-set. (auto)

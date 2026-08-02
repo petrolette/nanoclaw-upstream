@@ -17,6 +17,7 @@
 // labels go through `resolveLabel()` — a string or a `{en, fr}` map.
 
 import { mdToHtml } from './md.js';
+import { localizeHelp } from './help.js';
 import {
   t, getLocale, setLocale, localeTag, resolveLabel, LOCALES,
   resourceLabel, resourceCountLabel, fieldLabel, valueLabel,
@@ -333,9 +334,10 @@ function closeDetail() { state.detail = null; state.renderedSig = null; render()
 function helpPanel(text) {
   if (text === null) return null; // explicitly no help
   if (text === undefined) return el('div', { class: 'help-panel' }, el('div', { class: 'help-head dim' }, t('help.loading')));
-  const idx = text.indexOf('\n\n');
-  const head = (idx >= 0 ? text.slice(0, idx) : text).trim();
-  const body = idx >= 0 ? text.slice(idx + 2).trim() : '';
+  const localized = localizeHelp(text, getLocale());
+  const idx = localized.indexOf('\n\n');
+  const head = (idx >= 0 ? localized.slice(0, idx) : localized).trim();
+  const body = idx >= 0 ? localized.slice(idx + 2).trim() : '';
   return el('div', { class: 'help-panel' }, [
     el('div', { class: 'help-head' }, head),
     body ? el('details', { class: 'help-more' }, [

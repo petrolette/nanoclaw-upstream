@@ -1,0 +1,15 @@
+users: User — a messaging-platform identity. Each row is one sender on one channel. A single human may have multiple user rows across channels (no cross-channel linking yet).
+
+Verbs:
+  list
+  get <id>
+  create [approval]
+  update <id> [approval]
+
+Run `ncl users help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --id                         Namespaced "channel_type:handle" — e.g. "tg:6037840640", "discord:123456789", "email:user@example.com". Must be provided on create. (required)
+  --kind                       Channel type identifier (e.g. "telegram", "discord"). Used as a fallback for DM resolution when the id prefix doesn't match a registered adapter. (required)
+  --display-name               Human-readable name. Shown in approval cards and logs. Often auto-populated from the channel adapter. (updatable)
+  --created-at                 Auto-set. (auto)

@@ -1,0 +1,15 @@
+roles: User role — privilege grant. "owner" is always global and has full control. "admin" can be global (agent_group_id null) or scoped to a specific agent group. Admin at a group implies membership. Approval routing prefers admins/owners reachable on the same messaging platform as the request origin (e.g. a Telegram request routes the approval card to an admin on Telegram when possible).
+
+Verbs:
+  list
+  grant [approval] — Grant a role. Use --user, --role, and optionally --group for scoped admin.
+  revoke [approval] — Revoke a role. Use --user, --role, and --group if scoped.
+
+Run `ncl roles help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --user-id                    User receiving the role. Must exist in users table.
+  --role                       "owner" has full control, always global. "admin" can manage groups and approve actions. (values: owner | admin)
+  --agent-group-id             Null = global (all groups). A specific ID limits the role to that group. Owner must always be null.
+  --granted-by                 Who granted this role. Informational.
+  --granted-at                 Auto-set.

@@ -1,0 +1,25 @@
+tasks: Scheduled task — prompt plus run time. Tasks run from the agent group system session and the agent chooses delivery destination at fire time.
+
+Verbs:
+  list — List live tasks with per-series run history (schedule, runs, failures, next fire).
+  get — Get a task by series id.
+  create — Create a scheduled task (recurring or one-shot) in the agent group system session.
+  append-log — Append a one-line note to a task run log (tasks/<id>.md).
+  update — Update a live task by series id.
+  cancel — Cancel a live task by series id, or use --all as a kill switch.
+  run — Fire a task now without changing its schedule (queues an extra run due immediately). Safe for testing — unlike update --process-after now, it neither consumes a one-shot nor advances a recurring series.
+  pause — Pause a pending task by series id.
+  resume — Resume a paused task by series id.
+  delete — Hard-delete a task series and its history.
+
+Run `ncl tasks help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --series-id                  Stable task handle. (auto)
+  --agent-group-id             Agent group that owns the task.
+  --session-id                 System session that runs the task.
+  --status                     Live state. (values: pending | paused)
+  --process-after              Next run time (ISO 8601 or naive local). Required for one-shots; with --recurrence the first run is derived from the cron grid. (updatable)
+  --recurrence                 Optional cron expression. (updatable)
+  --prompt                     Task prompt. (required, updatable)
+  --script                     Optional pre-task bash script. (updatable)

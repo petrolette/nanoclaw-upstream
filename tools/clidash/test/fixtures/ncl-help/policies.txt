@@ -1,0 +1,14 @@
+policies: Agent-to-agent approval policy. A row requires every message from one agent to another to be approved by a human before delivery — without un-wiring the connection. No row = free flow. Directed and per-pair: gate both directions with two policies. Operator-only (agents cannot manage their own gates).
+
+Verbs:
+  list
+  set [approval] — Require approval for messages from one agent to another. Use --from <agent-group-id> --to <agent-group-id> --approver <user-id>. Only the named approver (or an owner) can approve.
+  remove [approval] — Remove an approval policy (back to free flow). Use --from <agent-group-id> --to <agent-group-id>.
+
+Run `ncl policies help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --from-agent-group-id        Source agent group. References agent_groups.id.
+  --to-agent-group-id          Target agent group. References agent_groups.id.
+  --approver                   User-id who approves each gated message (required). Only this user (or an owner) can approve.
+  --created-at                 Auto-set.

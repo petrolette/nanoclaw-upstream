@@ -1,0 +1,14 @@
+members: Agent group member — grants an unprivileged user permission to interact with an agent group. Users with admin or owner roles on the group are implicitly members and do not need a separate membership row. Membership is checked by the router when sender_scope is "known".
+
+Verbs:
+  list
+  add [approval] — Add a user as a member of an agent group. Use --user and --group.
+  remove [approval] — Remove a user from an agent group. Use --user and --group.
+
+Run `ncl members help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --user-id                    The user to grant membership. Must reference an existing user (users.id).
+  --agent-group-id             The agent group to grant access to. Must reference an existing agent group (agent_groups.id).
+  --added-by                   User ID of whoever added this member. Informational — not enforced.
+  --added-at                   ISO 8601 timestamp of when the membership was granted.

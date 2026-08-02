@@ -1,0 +1,18 @@
+sessions: Session — the runtime unit. Maps one (agent_group, messaging_group, thread) combination to a container with its own inbound.db and outbound.db. Created automatically by the router when a message arrives.
+
+Verbs:
+  list
+  get <id>
+
+Run `ncl sessions help <verb>` (or add --help to any command) for flags and examples.
+
+Fields:
+  --id                         UUID. (auto)
+  --agent-group-id             Agent group this session runs.
+  --messaging-group-id         Messaging group this session serves. Null for agent-shared sessions.
+  --thread-id                  Thread ID. Only set for per-thread session mode.
+  --agent-provider             Provider override. Null means inherit from agent group.
+  --status                     "active" receives messages. "closed" is archived. (values: active | closed)
+  --container-status           "running" — container alive and polling. "stopped" — container exited; the sweep will restart it automatically when due messages arrive. "idle" — reserved, currently unused. (values: running | idle | stopped)
+  --last-active                Last message or heartbeat. Used for stale detection.
+  --created-at                 Auto-set. (auto)

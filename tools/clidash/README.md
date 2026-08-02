@@ -87,7 +87,19 @@ English shows exactly what `ncl` prints, which is what you would type back into 
 terminal. Names, ids, timestamps, free text and `ncl … help` output are never
 rewritten; hovering a translated column or tab shows the raw token as a tooltip.
 
-Adding a locale is a dictionary + a glossary + an entry in `LOCALES`;
+The help panel under each table shows `ncl <resource> help`, which the CLI emits
+in English. `public/help.js` re-renders it from `public/help-fr.js`: only the
+sentences are looked up — the resource description, each verb's sentence, each
+field's sentence. Verb names, flag names, enum tokens and the backticked command
+are structure and stay verbatim, so you can still retype them into a terminal;
+the `(required, updatable)` / `(values: …)` annotations are localised
+mechanically rather than stored. A missing sentence stays English, one line at a
+time. `test/help-i18n.test.js` checks the catalogue against captured fixtures of
+the real CLI output (`test/fixtures/ncl-help/`) and fails both on an
+untranslated sentence and on French written for a flag the CLI no longer prints
+— refresh the fixtures when upstream reworks a help text.
+
+Adding a locale is a dictionary + a glossary + a help catalogue + an entry in `LOCALES`;
 `test/i18n.test.js` fails on any key present in one locale and missing in
 another, on a key whose shape or arity drifts between locales, and on any
 `t('…')` call in `app.js` with no dictionary entry.
