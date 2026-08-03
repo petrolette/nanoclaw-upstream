@@ -15,11 +15,16 @@
  *
  * ## Transport
  *
- * The existing n8n webhook (`nanoclaw-email-v2`) — the same one the host's
- * shell automations already use (`~/scripts/weekly-digest.sh`,
- * `check-docker-images.sh`). Contract: `POST {to, subject, message}` as JSON,
- * `message` being HTML, with an optional `Authorization: Bearer <secret>`.
- * No new dependency: Node's global `fetch`.
+ * `~/scripts/lib/send-mail.py` — the same sender the host's shell automations
+ * use since 03.08.2026 (`weekly-digest.sh`, `check-docker-images.sh`). It posts
+ * to the Gmail API through the OneCLI gateway, which injects the
+ * `nano@tksa.swiss` credentials at the proxy boundary: no token is read, held
+ * or logged here.
+ *
+ * It replaced the n8n webhook `nanoclaw-email-v2`, deleted the same day. That
+ * webhook required two distinct tokens — the standard `X-Webhook-Token` plus an
+ * in-workflow `Authorization: Bearer` check — and the second was unreachable
+ * from a container, which is what broke the AO planning mail on 03.08.2026.
  *
  * ## Failure posture
  *
@@ -29,6 +34,7 @@
  * warning rather than passed over in silence — an alerting path that is
  * quietly absent is the failure mode this whole assertion exists to remove.
  */
+import { execFile } from 'child_process';
 import os from 'os';
 
 import { TIMEZONE } from '../config.js';
@@ -36,29 +42,46 @@ import { readEnvFile } from '../env.js';
 import { log } from '../log.js';
 import { formatLocalStamp } from '../timezone.js';
 
-/** How long the webhook call may take before it is abandoned. */
+/** How long the send may take before it is abandoned. */
 export const BOOT_ALERT_TIMEOUT_MS = 15_000;
 
+/** Host-side sender: Gmail API behind the OneCLI gateway. */
+export const SEND_MAIL_BIN = `${process.env.HOME ?? '/home/nanoclaw'}/scripts/lib/send-mail.py`;
+
 export interface BootAlertConfig {
-  webhook: string;
   to: string;
-  secret?: string;
 }
 
 /**
- * Read the alert transport from `.env`.
+ * Read the alert recipient from `.env`.
  *
- * `WEBHOOK_SECRET` is the same key the host's shell automations already read;
- * it is optional here because the webhook may be left unauthenticated.
- * Returns `null` when the mandatory pair is incomplete — the caller then warns
- * instead of failing.
+ * Only `ALERT_EMAIL_TO` is needed now: the transport carries no secret of its
+ * own, so there is nothing else to configure. Returns `null` when the recipient
+ * is missing — the caller then warns instead of failing.
  */
 export function readBootAlertConfig(): BootAlertConfig | null {
-  const env = readEnvFile(['ALERT_EMAIL_WEBHOOK', 'ALERT_EMAIL_TO', 'WEBHOOK_SECRET']);
-  const webhook = env.ALERT_EMAIL_WEBHOOK?.trim();
+  const env = readEnvFile(['ALERT_EMAIL_TO']);
   const to = env.ALERT_EMAIL_TO?.trim();
-  if (!webhook || !to) return null;
-  return { webhook, to, secret: env.WEBHOOK_SECRET?.trim() || undefined };
+  if (!to) return null;
+  return { to };
+}
+
+/**
+ * Hand the message to `send-mail.py`. Rejects on a non-zero exit so the caller
+ * can log it; the caller never lets that rejection escape.
+ */
+function runSendMail(to: string, subject: string, message: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      SEND_MAIL_BIN,
+      ['--to', to, '--subject', subject],
+      { timeout: BOOT_ALERT_TIMEOUT_MS },
+      (err) => (err ? reject(err) : resolve()),
+    );
+    // The body travels on stdin: it is HTML, and an argv full of markup is a
+    // quoting accident waiting to happen.
+    child.stdin?.end(message);
+  });
 }
 
 /** Minimal HTML escaping — channel names are ours, but the mail is not a place to be casual. */
@@ -112,7 +135,7 @@ export async function sendBootAlert(missing: readonly string[]): Promise<void> {
   if (!config) {
     log.warn('Configured channel did not start, but no alert transport is set — logs only', {
       missing: [...missing],
-      hint: 'set ALERT_EMAIL_WEBHOOK and ALERT_EMAIL_TO in .env to be told by email',
+      hint: 'set ALERT_EMAIL_TO in .env to be told by email',
     });
     return;
   }
@@ -121,25 +144,8 @@ export async function sendBootAlert(missing: readonly string[]): Promise<void> {
   const stamp = formatLocalStamp(new Date(), TIMEZONE);
   const { subject, message } = buildBootAlertEmail({ missing, host, stamp });
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (config.secret) headers.Authorization = `Bearer ${config.secret}`;
-
   try {
-    const response = await fetch(config.webhook, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ to: config.to, subject, message }),
-      signal: AbortSignal.timeout(BOOT_ALERT_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      // Never log the body: the request carried a bearer token and the
-      // response may echo request context back.
-      log.error('Post-boot channel alert was refused by the webhook', {
-        status: response.status,
-        missing: [...missing],
-      });
-      return;
-    }
+    await runSendMail(config.to, subject, message);
     log.info('Post-boot channel alert sent', { missing: [...missing], to: config.to });
   } catch (err) {
     log.error('Post-boot channel alert could not be sent', { err, missing: [...missing] });

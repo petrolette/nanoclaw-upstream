@@ -2,11 +2,13 @@
  * Tests for the post-boot email alert (local addition, not upstream).
  *
  * Two properties matter more than the wording of the mail:
- *   1. it never rejects — boot must survive a dead or slow webhook;
+ *   1. it never rejects — boot must survive a dead or slow sender;
  *   2. an unconfigured transport is *announced*, not passed over in silence,
  *      because a quietly absent alert is exactly the failure this assertion
  *      was written to remove.
  */
+import { execFile } from 'child_process';
+
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import { log } from '../log.js';
@@ -15,12 +17,34 @@ import {
   readBootAlertConfig,
   sendBootAlert,
   BOOT_ALERT_TIMEOUT_MS,
+  SEND_MAIL_BIN,
 } from './channel-boot-alert.js';
 import { readEnvFile } from '../env.js';
 
 vi.mock('../env.js', () => ({ readEnvFile: vi.fn(() => ({})) }));
+vi.mock('child_process', () => ({ execFile: vi.fn() }));
 
 const readEnvFileMock = vi.mocked(readEnvFile);
+const execFileMock = vi.mocked(execFile);
+
+/** What the production call actually passes: binary, argv, options, callback. */
+type ExecFileCall = [string, string[], { timeout: number }, (err: Error | null) => void];
+
+/** Stand in for the child process: capture stdin, then answer with `err`. */
+function execFileAnswers(err: Error | null) {
+  const chunks: string[] = [];
+  execFileMock.mockImplementation(((...args: unknown[]) => {
+    const cb = args[3] as (e: Error | null) => void;
+    queueMicrotask(() => cb(err));
+    return { stdin: { end: (body: string) => chunks.push(body) } };
+  }) as unknown as typeof execFile);
+  return chunks;
+}
+
+/** Typed view of a recorded call — `execFile`'s own signature is far wider. */
+function callArgs(index = 0): ExecFileCall {
+  return execFileMock.mock.calls[index] as unknown as ExecFileCall;
+}
 
 /** Make `.env` answer with exactly these keys for the next call. */
 function envWith(values: Record<string, string>) {
@@ -37,38 +61,19 @@ afterEach(() => {
 });
 
 describe('readBootAlertConfig', () => {
-  it('returns null when the webhook is missing', () => {
-    envWith({ ALERT_EMAIL_TO: 'someone@example.com' });
-    expect(readBootAlertConfig()).toBeNull();
-  });
-
   it('returns null when the recipient is missing', () => {
-    envWith({ ALERT_EMAIL_WEBHOOK: 'https://hook.example/mail' });
+    envWith({});
     expect(readBootAlertConfig()).toBeNull();
   });
 
   it('treats a whitespace-only value as absent', () => {
-    envWith({ ALERT_EMAIL_WEBHOOK: 'https://hook.example/mail', ALERT_EMAIL_TO: '   ' });
+    envWith({ ALERT_EMAIL_TO: '   ' });
     expect(readBootAlertConfig()).toBeNull();
   });
 
-  it('carries the bearer secret when one is set, and omits it otherwise', () => {
-    envWith({
-      ALERT_EMAIL_WEBHOOK: 'https://hook.example/mail',
-      ALERT_EMAIL_TO: 'someone@example.com',
-      WEBHOOK_SECRET: 's3cret',
-    });
-    expect(readBootAlertConfig()).toEqual({
-      webhook: 'https://hook.example/mail',
-      to: 'someone@example.com',
-      secret: 's3cret',
-    });
-
-    envWith({
-      ALERT_EMAIL_WEBHOOK: 'https://hook.example/mail',
-      ALERT_EMAIL_TO: 'someone@example.com',
-    });
-    expect(readBootAlertConfig()?.secret).toBeUndefined();
+  it('returns the recipient, and nothing else — the transport holds no secret', () => {
+    envWith({ ALERT_EMAIL_TO: 'someone@example.com' });
+    expect(readBootAlertConfig()).toEqual({ to: 'someone@example.com' });
   });
 });
 
@@ -97,93 +102,64 @@ describe('buildBootAlertEmail', () => {
 
 describe('sendBootAlert', () => {
   it('does nothing at all when no channel is missing', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
+    execFileAnswers(null);
 
     await sendBootAlert([]);
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(execFileMock).not.toHaveBeenCalled();
     expect(readEnvFileMock).not.toHaveBeenCalled();
   });
 
-  it('warns loudly rather than failing when no transport is configured', async () => {
+  it('warns loudly rather than failing when no recipient is configured', async () => {
     const warnSpy = vi.spyOn(log, 'warn').mockImplementation(() => {});
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
+    execFileAnswers(null);
     envWith({});
 
     await expect(sendBootAlert(['telegram'])).resolves.toBeUndefined();
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(execFileMock).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({ missing: ['telegram'] });
   });
 
-  it('posts the documented payload, with the bearer header and a timeout', async () => {
+  it('calls the host sender with the recipient, a subject and a bounded timeout', async () => {
     vi.spyOn(log, 'info').mockImplementation(() => {});
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-    vi.stubGlobal('fetch', fetchMock);
-    envWith({
-      ALERT_EMAIL_WEBHOOK: 'https://hook.example/mail',
-      ALERT_EMAIL_TO: 'someone@example.com',
-      WEBHOOK_SECRET: 's3cret',
-    });
+    execFileAnswers(null);
+    envWith({ ALERT_EMAIL_TO: 'someone@example.com' });
 
     await sendBootAlert(['telegram']);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://hook.example/mail');
-    expect(init.method).toBe('POST');
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer s3cret');
-    expect(init.signal).toBeInstanceOf(AbortSignal);
-
-    const body = JSON.parse(init.body as string) as Record<string, string>;
-    expect(Object.keys(body).sort()).toEqual(['message', 'subject', 'to']);
-    expect(body.to).toBe('someone@example.com');
-    expect(body.subject).toContain('telegram');
-    expect(BOOT_ALERT_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+    const [bin, args, opts] = callArgs();
+    expect(bin).toBe(SEND_MAIL_BIN);
+    expect(args[0]).toBe('--to');
+    expect(args[1]).toBe('someone@example.com');
+    expect(args[2]).toBe('--subject');
+    expect(args[3]).toContain('telegram');
+    expect(opts.timeout).toBe(BOOT_ALERT_TIMEOUT_MS);
   });
 
-  it('omits the Authorization header when no secret is set', async () => {
+  it('passes the HTML body on stdin rather than through argv', async () => {
     vi.spyOn(log, 'info').mockImplementation(() => {});
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-    vi.stubGlobal('fetch', fetchMock);
-    envWith({
-      ALERT_EMAIL_WEBHOOK: 'https://hook.example/mail',
-      ALERT_EMAIL_TO: 'someone@example.com',
-    });
+    const bodies = execFileAnswers(null);
+    envWith({ ALERT_EMAIL_TO: 'someone@example.com' });
 
     await sendBootAlert(['telegram']);
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toContain('<code>telegram</code>');
+    const [, args] = callArgs();
+    expect(args.join(' ')).not.toContain('<code>');
   });
 
-  it('logs and returns when the webhook refuses, without leaking the response', async () => {
+  it('never rejects when the sender fails, and says so in the log', async () => {
     const errorSpy = vi.spyOn(log, 'error').mockImplementation(() => {});
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
-    envWith({
-      ALERT_EMAIL_WEBHOOK: 'https://hook.example/mail',
-      ALERT_EMAIL_TO: 'someone@example.com',
-    });
+    execFileAnswers(new Error('exit 1'));
+    envWith({ ALERT_EMAIL_TO: 'someone@example.com' });
 
     await expect(sendBootAlert(['telegram'])).resolves.toBeUndefined();
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy.mock.calls[0]?.[1]).toMatchObject({ status: 401 });
-  });
-
-  it('never rejects when the transport itself throws', async () => {
-    const errorSpy = vi.spyOn(log, 'error').mockImplementation(() => {});
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ETIMEDOUT')));
-    envWith({
-      ALERT_EMAIL_WEBHOOK: 'https://hook.example/mail',
-      ALERT_EMAIL_TO: 'someone@example.com',
-    });
-
-    await expect(sendBootAlert(['telegram'])).resolves.toBeUndefined();
-
-    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[1]).toMatchObject({ missing: ['telegram'] });
   });
 });
