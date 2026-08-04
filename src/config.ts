@@ -112,8 +112,7 @@ export const ANTHROPIC_SUBSCRIPTION_SCOPE = (
 ).trim();
 // Long-lived subscription token from `claude setup-token`. When absent the
 // short-lived token in ~/.claude/.credentials.json is used as a stop-gap.
-export const CLAUDE_CODE_OAUTH_TOKEN =
-  process.env.CLAUDE_CODE_OAUTH_TOKEN || envConfig.CLAUDE_CODE_OAUTH_TOKEN || '';
+export const CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN || envConfig.CLAUDE_CODE_OAUTH_TOKEN || '';
 // What to do when a group is switched to the subscription but no token is
 // usable (expired, unreadable). `refuse` — the default — aborts the spawn, so
 // the message stays pending and retries once a token is back. `api-credits`

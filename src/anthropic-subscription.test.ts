@@ -81,8 +81,8 @@ describe('applySubscriptionAuth', () => {
     const args = gatewayArgs();
     m.applySubscriptionAuth(args, 'claude', GROUP);
     expect(args).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-env-token');
-    expect(args).toContain("NO_PROXY=api.anthropic.com,api.anthropic.com:443,.anthropic.com");
-    expect(args).toContain("no_proxy=api.anthropic.com,api.anthropic.com:443,.anthropic.com");
+    expect(args).toContain('NO_PROXY=api.anthropic.com,api.anthropic.com:443,.anthropic.com');
+    expect(args).toContain('no_proxy=api.anthropic.com,api.anthropic.com:443,.anthropic.com');
     // The proxy itself stays, so every other host still goes through the vault.
     expect(args.some((a) => a.startsWith('HTTPS_PROXY='))).toBe(true);
   });
@@ -91,7 +91,7 @@ describe('applySubscriptionAuth', () => {
     const m = await load('true');
     const args = [...gatewayArgs(), '-e', 'NO_PROXY=localhost,127.0.0.1'];
     m.applySubscriptionAuth(args, 'claude', GROUP);
-    expect(args).toContain("NO_PROXY=localhost,127.0.0.1,api.anthropic.com,api.anthropic.com:443,.anthropic.com");
+    expect(args).toContain('NO_PROXY=localhost,127.0.0.1,api.anthropic.com,api.anthropic.com:443,.anthropic.com');
     expect(args.filter((a) => a.startsWith('NO_PROXY=')).length).toBe(1);
   });
 

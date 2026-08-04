@@ -174,11 +174,7 @@ export function subscriptionEnabledFor(agentGroupId: string): boolean {
  * because it removes one of the vars the gateway sets and appends overrides
  * that have to win (docker takes the last `-e` for a given name).
  */
-export function applySubscriptionAuth(
-  args: string[],
-  provider: string,
-  agentGroupId: string,
-): SubscriptionOutcome {
+export function applySubscriptionAuth(args: string[], provider: string, agentGroupId: string): SubscriptionOutcome {
   if (!subscriptionEnabledFor(agentGroupId)) return 'disabled';
   // Only the Anthropic-backed provider. OpenCode/Codex groups keep the gateway.
   if (provider && provider !== 'claude') return 'not-claude';

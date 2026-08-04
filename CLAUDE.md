@@ -163,6 +163,16 @@ Key files: `src/container-restart.ts`, `src/container-runner.ts` (`killContainer
 
 API keys, OAuth tokens, and auth credentials are managed by the OneCLI gateway. Secrets are injected into per-agent containers at request time — none are passed in env vars or through chat context. The container agent sees this via the `onecli-gateway` container skill (`container/skills/onecli-gateway/SKILL.md`), which teaches it how the proxy works, how to handle auth errors, and to never ask for raw credentials. Host-side wiring: `src/modules/approvals/onecli-approvals.ts`, `ensureAgent()` in `container-runner.ts`. Run `onecli --help`.
 
+### Anthropic auth: subscription vs API credits (install-specific, 04.08.2026)
+
+By default the gateway hands each container `ANTHROPIC_API_KEY=placeholder` and proxies api.anthropic.com, injecting the vault's Anthropic secret as `x-api-key` — every token billed to the org's API credits. `NANOCLAW_ANTHROPIC_SUBSCRIPTION` in `.env` switches groups to a Claude subscription instead (`true` = all groups, or a comma-separated list of agent group ids). See `src/anthropic-subscription.ts`.
+
+The trap: leaving `ANTHROPIC_API_KEY` set makes the switch fail **silently** — the agent answers normally, still billed. In non-interactive mode (what the SDK runs) the CLI's key resolver returns `ANTHROPIC_API_KEY` unconditionally and skips the OAuth branch whenever it yields a key. So all three of these must hold: token set, `ANTHROPIC_API_KEY` absent, `api.anthropic.com` in `NO_PROXY`. Never verify a switchover by "the agent replied" — check `request_logs` in the OneCLI DB for `/v1/messages` on that agent (it should stay flat).
+
+Token source: `CLAUDE_CODE_OAUTH_TOKEN` in `.env` (from `claude setup-token`, long-lived — preferred) else `~/.claude/.credentials.json`, which expires in hours and only refreshes when a human runs `claude`. `~/scripts/claude-token-watch.sh` (cron `*/30`) probes the live token with a free `GET /v1/models` and alerts the Groupe VPS on 401. Without a usable token the host **refuses to spawn** rather than fall back to paid credits; `NANOCLAW_ANTHROPIC_SUBSCRIPTION_FALLBACK=api-credits` restores the old path.
+
+Rollback: empty `NANOCLAW_ANTHROPIC_SUBSCRIPTION` in `.env`, restart the service. The vault is never touched either way.
+
 ### Secret modes
 
 Auto-created agents default to `all` secret mode — every vault secret whose host pattern matches is injected automatically, so the common case needs no per-agent setup. If an agent is in `selective` mode it gets no secrets until you assign them, which shows up as a `401` from an API whose credential *is* in the vault. The SDK can't change this; use the CLI (or the web UI at `http://127.0.0.1:10254`):
