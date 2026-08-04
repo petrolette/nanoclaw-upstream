@@ -48,10 +48,16 @@ import { log } from './log.js';
 
 /**
  * Hosts that must bypass the credential proxy for subscription auth to hold.
- * Three spellings of the same thing on purpose: not every HTTP client in the
- * container strips the `:443` before matching NO_PROXY, and one that doesn't
- * would quietly send the request through the gateway with the vault key
- * attached — observed on `/mcp-registry/v0/servers` with the bare host alone.
+ * Three spellings because clients differ on whether they strip `:443` or accept
+ * a leading-dot suffix before matching.
+ *
+ * Known limit, measured 04.08.2026: this does NOT take *all* Anthropic traffic
+ * off the proxy. The claude binary keeps sending `/mcp-registry/v0/servers`
+ * through the gateway whatever the spelling — it evidently uses a second HTTP
+ * client that ignores NO_PROXY. That endpoint is MCP discovery, not inference,
+ * so nothing is billed by it; `/v1/messages` does bypass, verified twice
+ * against the gateway's `request_logs`. Don't read a `request_logs` row for
+ * this agent as proof the switch failed — check the path.
  */
 const ANTHROPIC_NO_PROXY = ['api.anthropic.com', 'api.anthropic.com:443', '.anthropic.com'];
 
