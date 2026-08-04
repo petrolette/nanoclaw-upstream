@@ -11,6 +11,7 @@ import { promisify } from 'util';
 import { OneCLI } from '@onecli-sh/sdk';
 
 import {
+  ANTHROPIC_SUBSCRIPTION_FALLBACK,
   CONTAINER_CPU_LIMIT,
   CONTAINER_IMAGE,
   CONTAINER_IMAGE_BASE,
@@ -33,6 +34,7 @@ import { getAgentGroup } from './db/agent-groups.js';
 import { getDb, hasTable } from './db/connection.js';
 import { initGroupFilesystem } from './group-init.js';
 import { stopTypingRefresh } from './modules/typing/index.js';
+import { applySubscriptionAuth } from './anthropic-subscription.js';
 import { log } from './log.js';
 import { validateAdditionalMounts } from './modules/mount-security/index.js';
 // Provider host-side config barrel — each provider that needs host-side
@@ -534,6 +536,32 @@ async function buildContainerArgs(
     throw new Error('OneCLI gateway not applied — refusing to spawn container without credentials');
   }
   log.info('OneCLI gateway applied', { containerName });
+
+  // Subscription auth (opt-in). Runs last on purpose: it strips the gateway's
+  // placeholder ANTHROPIC_API_KEY and appends overrides that must win, and
+  // docker resolves a repeated -e to the last occurrence.
+  const subscription = applySubscriptionAuth(args, _provider, agentGroup.id);
+  if (subscription === 'applied') {
+    log.info('Anthropic subscription auth applied — api.anthropic.com bypasses the gateway', {
+      containerName,
+      agentGroupId: agentGroup.id,
+    });
+  } else if (subscription === 'no-token') {
+    if (ANTHROPIC_SUBSCRIPTION_FALLBACK === 'refuse') {
+      // Same contract as a gateway failure: the caller leaves the message
+      // pending and the next sweep retries, so nothing is lost — the group
+      // simply waits for a fresh token instead of quietly spending credits.
+      throw new Error(
+        'Anthropic subscription enabled but no usable token — refusing to spawn on API credits. ' +
+          'Refresh the token (see src/anthropic-subscription.ts) or set ' +
+          'NANOCLAW_ANTHROPIC_SUBSCRIPTION_FALLBACK=api-credits to allow paid fallback.',
+      );
+    }
+    log.warn('Anthropic subscription enabled but no usable token — falling back to API credits', {
+      containerName,
+      agentGroupId: agentGroup.id,
+    });
+  }
 
   // Override entrypoint: run v2 entry point directly via Bun (no tsc, no stdin).
   args.push('--entrypoint', 'bash');

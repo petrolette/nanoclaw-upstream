@@ -19,6 +19,9 @@ const envConfig = readEnvFile([
   'NANOCLAW_EGRESS_LOCKDOWN',
   'NANOCLAW_EGRESS_NETWORK',
   'ONECLI_GATEWAY_CONTAINER',
+  'NANOCLAW_ANTHROPIC_SUBSCRIPTION',
+  'NANOCLAW_ANTHROPIC_SUBSCRIPTION_FALLBACK',
+  'CLAUDE_CODE_OAUTH_TOKEN',
 ]);
 
 /**
@@ -94,6 +97,37 @@ export const EGRESS_NETWORK =
   process.env.NANOCLAW_EGRESS_NETWORK || envConfig.NANOCLAW_EGRESS_NETWORK || 'nanoclaw-egress';
 export const ONECLI_GATEWAY_CONTAINER =
   process.env.ONECLI_GATEWAY_CONTAINER || envConfig.ONECLI_GATEWAY_CONTAINER || 'onecli';
+
+// Draw agent inference from a Claude subscription instead of the organisation's
+// API credits. Off by default — unsetting it and restarting the groups is the
+// full rollback. Consumed by src/anthropic-subscription.ts.
+//
+// `true` covers every claude-provider group; a comma-separated list of agent
+// group ids covers only those, which is how a switchover gets proven on one
+// group before it reaches the rest.
+export const ANTHROPIC_SUBSCRIPTION_SCOPE = (
+  process.env.NANOCLAW_ANTHROPIC_SUBSCRIPTION ||
+  envConfig.NANOCLAW_ANTHROPIC_SUBSCRIPTION ||
+  ''
+).trim();
+// Long-lived subscription token from `claude setup-token`. When absent the
+// short-lived token in ~/.claude/.credentials.json is used as a stop-gap.
+export const CLAUDE_CODE_OAUTH_TOKEN =
+  process.env.CLAUDE_CODE_OAUTH_TOKEN || envConfig.CLAUDE_CODE_OAUTH_TOKEN || '';
+// What to do when a group is switched to the subscription but no token is
+// usable (expired, unreadable). `refuse` — the default — aborts the spawn, so
+// the message stays pending and retries once a token is back. `api-credits`
+// restores the old gateway path, which spends money without saying so; that is
+// exactly the silent-spend failure this switchover exists to close, so it has
+// to be asked for explicitly.
+export const ANTHROPIC_SUBSCRIPTION_FALLBACK =
+  (
+    process.env.NANOCLAW_ANTHROPIC_SUBSCRIPTION_FALLBACK ||
+    envConfig.NANOCLAW_ANTHROPIC_SUBSCRIPTION_FALLBACK ||
+    'refuse'
+  ).trim() === 'api-credits'
+    ? 'api-credits'
+    : 'refuse';
 
 // Timezone for scheduled tasks, message formatting, etc.
 // Validates each candidate is a real IANA identifier before accepting.
