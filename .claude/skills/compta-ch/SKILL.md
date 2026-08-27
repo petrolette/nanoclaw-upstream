@@ -199,8 +199,9 @@ tranché) se capitalise :
   `kupfer-erp-anouveaux-perimes.md`, `kupfer-erp-tva-referentiel.md`,
   `kupfer-erp-arrondi-5cts-chf.md`, `kupfer-erp-salaires.md`,
   `kupfer-erp-delais-paiement-echeances.md`.
-- Documents CCT : `~/docs/cct/CCT/` (CCT 2012, consolidée 2019, avenants 1 à 7 — **l'avenant 8
-  manque**, voir `07-cct-branche.md` §9).
+- Documents CCT : `~/docs/cct/CCT_2012-2026_consolidee_2025-12-17.pdf` — **seul texte qui fait
+  foi**. Les PDF de `~/docs/cct/CCT/` (CCT 2012, consolidée 2019, avenants 1 à 7) sont de
+  l'historique et contiennent des dispositions périmées.
 - Outils : WebSearch / WebFetch pour revérifier une source officielle. Les PDF se lisent avec
   `pypdf` ; quand le texte est un scan OCR de mauvaise qualité (cas des avenants CCT), **rendre
   la page en PNG avec `pymupdf` et la lire visuellement** plutôt que de citer un chiffre issu de
