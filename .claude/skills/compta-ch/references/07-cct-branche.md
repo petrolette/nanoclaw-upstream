@@ -6,9 +6,11 @@ l'**Union professionnelle suisse de l'automobile – Section Vaud (UPSA-VD)** et
 Source de référence : le **texte consolidé de décembre 2025**, qui intègre les avenants du
 1er janvier 2015 (821.10.090915.1), du 1er janvier 2022 (821.10.091122.1) et du **1er janvier
 2025 (821.10.130825.1)**.
-📄 `~/docs/cct/CCT_2012-2026_consolidee_2025-12-17.pdf` — **c'est ce document qui fait foi**.
-Les avenants 1 à 7 et la version 2019 restent dans `~/docs/cct/CCT/` à titre d'**historique**
-seulement : plusieurs de leurs dispositions sont périmées (vacances, LPP, jours fériés).
+📄 `~/docs/cct/CCT_2012-2026_consolidee_2025-12-17.pdf` — **seul document conservé, et il fait
+foi**. Les versions antérieures (CCT 2012, consolidée 2019, avenants 1 à 7) ont été supprimées
+volontairement : plusieurs de leurs dispositions sont abrogées (vacances, LPP, jours fériés) et
+les garder n'aurait servi qu'à faire citer un chiffre périmé. Les écarts qui comptent sont
+consignés dans cette fiche, aux endroits concernés.
 
 ## Validité
 
@@ -232,8 +234,9 @@ charge de famille) du salaire net perdu ; autres services obligatoires jusqu'à 
 - **`~/docs/cct/CCT_2012-2026_consolidee_2025-12-17.pdf`** — texte consolidé décembre 2025,
   version étendue et avenants (2015, 2022, 2025). Tous les articles cités ci-dessus en
   proviennent.
-- Historique dans `~/docs/cct/CCT/` : CCT 2012, consolidée 2019, avenants 1 à 7 (2013 → 2024).
-  ⚠️ Dispositions périmées — ne pas citer.
+- Versions antérieures (CCT 2012, consolidée 2019, avenants 1 à 7) : **non conservées**. Si un
+  point d'historique devient nécessaire — litige portant sur une période passée, par exemple —
+  les redemander à UPSA-VD.
 - [SECO — Conventions collectives de travail étendues du canton de Vaud](https://www.seco.admin.ch/fr/conventions-collectives-de-travail-vaud) (extension en vigueur jusqu'au 31.12.2026)
 - [UPSA-VD — Convention collective de travail](https://www.upsa-vd.ch/fr/a-propos-de-nous/convention-collective-de-travail/)
 - [État de Vaud — CCT et contrats-types](https://www.vd.ch/economie/prestations-de-la-direction-generale-de-lemploi-et-du-marche-du-travail-dgem/conventions-collectives-de-travail-cct-et-contrats-type)
