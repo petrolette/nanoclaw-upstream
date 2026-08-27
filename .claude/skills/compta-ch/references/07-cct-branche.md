@@ -234,9 +234,8 @@ charge de famille) du salaire net perdu ; autres services obligatoires jusqu'à 
 - **`~/docs/cct/CCT_2012-2026_consolidee_2025-12-17.pdf`** — texte consolidé décembre 2025,
   version étendue et avenants (2015, 2022, 2025). Tous les articles cités ci-dessus en
   proviennent.
-- Versions antérieures (CCT 2012, consolidée 2019, avenants 1 à 7) : **non conservées**. Si un
-  point d'historique devient nécessaire — litige portant sur une période passée, par exemple —
-  les redemander à UPSA-VD.
+- Versions antérieures (CCT 2012, consolidée 2019, avenants 1 à 7) : **non conservées**,
+  volontairement.
 - [SECO — Conventions collectives de travail étendues du canton de Vaud](https://www.seco.admin.ch/fr/conventions-collectives-de-travail-vaud) (extension en vigueur jusqu'au 31.12.2026)
 - [UPSA-VD — Convention collective de travail](https://www.upsa-vd.ch/fr/a-propos-de-nous/convention-collective-de-travail/)
 - [État de Vaud — CCT et contrats-types](https://www.vd.ch/economie/prestations-de-la-direction-generale-de-lemploi-et-du-marche-du-travail-dgem/conventions-collectives-de-travail-cct-et-contrats-type)
