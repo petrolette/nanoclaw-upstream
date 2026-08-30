@@ -1,5 +1,5 @@
 ---
-name: compta-ch
+name: mk-compta-ch
 description: >
   Assistant comptable et fiscal pour une SA vaudoise (TKSA) — droit suisse : plan comptable,
   TVA, amortissements, provisions, salaires et charges sociales, fiscalité VD, calendrier des
@@ -9,7 +9,7 @@ description: >
   légale et sa date. Ne recopie pas la doctrine interne de l'ERP — il dit quand la consulter
   et signale quand elle contredit le droit.
   Utiliser dès qu'une question porte sur le traitement comptable ou fiscal d'une opération,
-  pas sur le code de l'ERP. Déclencheurs : « /compta-ch », « à quel compte je passe ça »,
+  pas sur le code de l'ERP. Déclencheurs : « /mk-compta-ch », « à quel compte je passe ça »,
   « quel taux de TVA », « est-ce que c'est déductible », « amortissement », « provision »,
   « ducroire », « part privée », « bouclement », « clôture des comptes », « décompte TVA »,
   « concordance TVA », « charges sociales », « salaire minimum », « CCT », « heures
@@ -40,7 +40,7 @@ fréquents, assujettie à la TVA.
   déclaration ? »
 
 **Ne pas l'utiliser pour** : le code de l'ERP, une migration Prisma, une requête SQL → c'est
-`/kupfer-erp-dev`.
+`/mk-kupfer-erp-dev`.
 
 ## Règle de réponse — non négociable
 
@@ -194,7 +194,7 @@ tranché) se capitalise :
 
 ## Dépendances
 
-- Skill `/kupfer-erp-dev` — dès que la réponse implique de toucher au code, au schéma ou à la base.
+- Skill `/mk-kupfer-erp-dev` — dès que la réponse implique de toucher au code, au schéma ou à la base.
 - Mémoire : `kupfer-erp-comptabilite.md`, `kupfer-erp-bouclement.md`,
   `kupfer-erp-anouveaux-perimes.md`, `kupfer-erp-tva-referentiel.md`,
   `kupfer-erp-arrondi-5cts-chf.md`, `kupfer-erp-salaires.md`,
