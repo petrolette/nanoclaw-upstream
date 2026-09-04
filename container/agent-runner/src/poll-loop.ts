@@ -18,6 +18,8 @@ import {
   setCurrentInReplyTo,
 } from './db/session-state.js';
 import {
+  UNTRUSTED_INPUT_NOTE,
+  batchHasExternalContent,
   formatMessages,
   extractRouting,
   categorizeMessage,
@@ -303,7 +305,19 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
  * passthrough commands are sent raw (no XML wrapping) so the SDK can
  * dispatch them. Otherwise they fall through to standard XML formatting.
  */
-function formatMessagesWithCommands(messages: MessageInRow[], nativeSlashCommands: boolean): string {
+/**
+ * Composes the prompt for one turn. Exported for its tests.
+ *
+ * This — not `formatMessages` — is what the model receives, and the
+ * difference matters for the untrusted-input note: passthrough command text
+ * is pushed raw, after the formatted batch, so a note appended inside
+ * `formatMessages` would not be the last thing the model reads. Any message
+ * whose first token is an unrecognised `/command` takes that path
+ * (`categorizeMessage`), and the host gate passes unknown slash commands from
+ * any sender, so prefixing a `/` would otherwise step around the note
+ * entirely.
+ */
+export function formatMessagesWithCommands(messages: MessageInRow[], nativeSlashCommands: boolean): string {
   const parts: string[] = [];
   const normalBatch: MessageInRow[] = [];
 
@@ -326,6 +340,13 @@ function formatMessagesWithCommands(messages: MessageInRow[], nativeSlashCommand
 
   if (normalBatch.length > 0) {
     parts.push(formatMessages(normalBatch));
+  }
+
+  // Last word in the composed prompt, so nothing externally authored follows
+  // it. Attached only when the turn actually carries outside content — a note
+  // on every host-composed task turn would be noise the model learns to skip.
+  if (batchHasExternalContent(messages)) {
+    parts.push(UNTRUSTED_INPUT_NOTE);
   }
 
   return parts.join('\n\n');
